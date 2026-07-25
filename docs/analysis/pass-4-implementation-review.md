@@ -1,4 +1,4 @@
-# Cashflow Companion — Pass 4: Implementation Readiness Review
+# Headroom — Pass 4: Implementation Readiness Review
 
 *Independent implementation readiness review · generated 2026-07-16 · reviewer role: Principal
 Engineer / Distinguished Solution Architect / TPM, no authorship stake in Passes 1–3*
@@ -15,7 +15,7 @@ architecture.
 
 **Revision note (2026-07-16, same-day update).** This review was updated after initial publication
 to incorporate three developments surfaced in discussion after the first read: (1) a UI prototype
-(`Cashflow Companion.html`) was added to the repo — verified directly, see §14; (2) the team intends
+(`Headroom.html`) was added to the repo — verified directly, see §14; (2) the team intends
 to build with heavy AI assistance, which changes the velocity assumption behind the 242-person-day
 estimate in a way that isn't uniform across the backlog — see the revised §12 R-015; (3) a
 consolidated epic/initiative hierarchy was requested and is now specified in §4. Every other finding
@@ -36,7 +36,7 @@ plan against — given AI-assisted development and the existing prototype — is
 
 ## 1. Executive Summary
 
-Cashflow Companion's three prior passes did their job well at the level they operated: Pass 1
+Headroom's three prior passes did their job well at the level they operated: Pass 1
 correctly inventoried the requirements and flagged real gaps; Pass 2 correctly reconciled Pass 1's
 counting errors and drew a disciplined Track A/B/C boundary; Pass 3 correctly converted that
 architecture into a traceable, FR-complete backlog with Given/When/Then acceptance criteria on
@@ -513,7 +513,7 @@ prevent them from immediately starting implementation?**
 contents were the eight markdown documents reviewed here — `git log --all` showed only
 documentation commits (`11baaf5` through `ad46b17`); there was no `package.json`, no `src/`, no
 migrations, no CI config, no application code of any kind. Since then, one file was added:
-`Cashflow Companion.html` (722KB, untracked) — direct inspection (its self-unpacking bundler
+`Headroom.html` (722KB, untracked) — direct inspection (its self-unpacking bundler
 structure, and the near-total absence of any real backend/agent/MCP integration code inside it)
 shows this is a **UI prototype/mockup**, almost certainly covering the dashboard and adjacent
 screens (EPIC-01–03 territory), not a working implementation of the engine, agent, MCP servers,

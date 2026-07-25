@@ -1,4 +1,4 @@
-# Cashflow Companion — Falsifiable Hypotheses & Validation Plan
+# Headroom — Falsifiable Hypotheses & Validation Plan
 
 *v2 · 2026-07-11 · Companion to PRD v2, Personas, and the Executive Brief*
 

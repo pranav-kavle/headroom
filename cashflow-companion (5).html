@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Cashflow Companion</title>
+<title>Headroom</title>
 <template id="__bundler_thumbnail" data-bg-color="#0E5C4A">
   <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
     <rect width="1200" height="800" fill="#0E5C4A"/>
@@ -11,7 +11,7 @@
       <path d="M-150 40 L-40 -70 L40 10 L150 -100"/>
       <path d="M90 -100 L150 -100 L150 -40"/>
     </g>
-    <text x="600" y="520" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="72" fill="#FAFAF8">Cashflow Companion</text>
+    <text x="600" y="520" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="72" fill="#FAFAF8">Headroom</text>
     <text x="600" y="580" text-anchor="middle" font-family="monospace" font-size="34" fill="rgba(250,250,248,.72)">Safe-to-Pay, defended.</text>
   </svg>
 </template>
@@ -605,7 +605,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 14l5-5 4 4 7-7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 6h4v4" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <div>
-        <div class="name">Cashflow Companion</div>
+        <div class="name">Headroom</div>
         <div class="sub">Safe-to-Pay, defended.</div>
       </div>
     </div>
@@ -1487,7 +1487,7 @@ function renderPlan(){
           </div>
         </div>
         <p style="margin-top:26px;font-size:11.5px;color:var(--ink-3);border-top:1px solid var(--hair);padding-top:14px">
-          Every figure is an estimate shown as a range with its assumption stated. Cashflow Companion does not move money. <b>Estimates — confirm with your accountant.</b>
+          Every figure is an estimate shown as a range with its assumption stated. Headroom does not move money. <b>Estimates — confirm with your accountant.</b>
         </p>
       </div>
     </div>`;
@@ -1513,7 +1513,7 @@ function renderEmail(){
         <div class="mail-scroll">
           <div class="mail-head">
             <div class="mail-from"><div class="mail-av">CC</div>
-              <div><div style="font-weight:600;font-size:13.5px">Cashflow Companion</div>
+              <div><div style="font-weight:600;font-size:13.5px">Headroom</div>
               <div style="font-size:11.5px;color:var(--ink-3)">to ${state.name.toLowerCase()}@example.com</div></div></div>
             <div class="mail-subj">${subj}</div>
           </div>
@@ -1526,7 +1526,7 @@ function renderEmail(){
             </div>
             <p>New Safe-to-Pay this period: <b class="mono">${fmt(p.hero)}</b> (range ${fmt(p.hero)}–${fmt(Math.max(p.hero,p.payHigh))}).</p>
             <a class="mail-cta" data-view="dashboard">Review the full plan →</a>
-            <p style="font-size:11.5px;color:var(--ink-3);margin-top:14px">Estimates — confirm with your accountant. Cashflow Companion never moves money.</p>
+            <p style="font-size:11.5px;color:var(--ink-3);margin-top:14px">Estimates — confirm with your accountant. Headroom never moves money.</p>
           </div>
         </div>
       </div>
@@ -1596,7 +1596,7 @@ function renderLanding(){
       <div class="lp-nav">
         <div class="brand" style="padding:0">
           <div class="mark" aria-hidden="true">${MARK_SVG}</div>
-          <div><div class="name">Cashflow Companion</div><div class="sub">Safe-to-Pay, defended.</div></div>
+          <div><div class="name">Headroom</div><div class="sub">Safe-to-Pay, defended.</div></div>
         </div>
         <div class="lp-actions">
           <a class="lp-link" href="#lp-how">How it works</a>
@@ -1608,7 +1608,7 @@ function renderLanding(){
         <div>
           <div class="lp-eyebrow">For Schedule C freelancers</div>
           <h1 class="serif">Know exactly how much you can <em>pay yourself.</em> Every week.</h1>
-          <p class="lp-sub">Irregular income. Quarterly tax dread. The one question you can never quite answer: <b>can I afford to pay myself this month?</b> Cashflow Companion answers it — and defends the number.</p>
+          <p class="lp-sub">Irregular income. Quarterly tax dread. The one question you can never quite answer: <b>can I afford to pay myself this month?</b> Headroom answers it — and defends the number.</p>
           <div class="lp-cta">
             <button class="btn primary lg" data-view="onboarding">Connect your bank</button>
             <button class="btn ghost lg" data-view="catch">See the demo →</button>
@@ -1677,7 +1677,7 @@ function renderLanding(){
           <div class="feature-card amber">
             <div class="sec-eyebrow" style="color:var(--amber)">The catch</div>
             <h3>It sees the shortfall weeks early.</h3>
-            <p>When Acme’s $5,000 invoice slips 30 days, Cashflow Companion catches the tax-and-runway squeeze before it lands — lowers your Safe-to-Pay to a number you can trust, and protects the floors first.</p>
+            <p>When Acme’s $5,000 invoice slips 30 days, Headroom catches the tax-and-runway squeeze before it lands — lowers your Safe-to-Pay to a number you can trust, and protects the floors first.</p>
             <button class="btn primary" data-view="catch" style="margin-top:20px">See the catch →</button>
           </div>
         </div>
@@ -1718,7 +1718,7 @@ function obDots(active){
 function obShell(dotIdx, body, wide){
   return `<div class="ob">
     <header class="ob-top no-print">
-      <div class="ob-brand"><div class="mark">${MARK_SVG}</div><div class="name">Cashflow Companion</div></div>
+      <div class="ob-brand"><div class="mark">${MARK_SVG}</div><div class="name">Headroom</div></div>
       ${dotIdx>=0?obDots(dotIdx):'<span></span>'}
       <button class="ob-exit" data-view="landing">Exit</button>
     </header>
@@ -1740,7 +1740,7 @@ function obWelcome(){
     <h1 class="ob-h">How much can you safely pay yourself today?</h1>
     <p class="ob-sub">Connect your bank and we'll analyze your income, recurring expenses, upcoming taxes, and cash flow to calculate one number — the amount you can safely move into your personal account.</p>
     <div class="ob-cta"><button class="btn primary lg" onclick="obGo('connect')">Connect bank</button></div>
-    <div class="ob-reassure">${LOCK_SVG}Read-only, bank-level encryption. Cashflow Companion never moves your money.</div>`;
+    <div class="ob-reassure">${LOCK_SVG}Read-only, bank-level encryption. Headroom never moves your money.</div>`;
 }
 function obConnect(){
   const banks=[['Chase Bank','CH','#117ACA'],['Bank of America','BA','#B01F24'],['Wells Fargo','WF','#C4161C'],['Mercury','MR','#5266EB'],['Other bank','··','#86867F']];
@@ -1866,7 +1866,7 @@ function obCadence(){
     <div class="ob-opts" id="obCadOpts" style="margin-top:20px">
       ${opts.map(o=>`<button class="ob-opt" aria-pressed="${ob.cadence===o?'true':'false'}" onclick="obPickCadence('${o}')"><span class="radio"></span>${o}</button>`).join('')}
     </div>
-    <div class="ob-foot"><button class="ob-skip" onclick="obFinish()">Skip</button><button class="btn primary lg" onclick="obFinish()" style="margin-left:auto">Enter Cashflow Companion</button></div>`;
+    <div class="ob-foot"><button class="ob-skip" onclick="obFinish()">Skip</button><button class="btn primary lg" onclick="obFinish()" style="margin-left:auto">Enter Headroom</button></div>`;
 }
 function obPickCadence(o){
   ob.cadence=o;

@@ -1,4 +1,4 @@
-# Cashflow Companion — Data Model
+# Headroom — Data Model
 
 *Entity-relationship reference · v1 · 2026-07-16*
 

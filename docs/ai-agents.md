@@ -1,4 +1,4 @@
-# Cashflow Companion — AI Agent Design
+# Headroom — AI Agent Design
 
 *v2 · 2026-07-11 · Companion to PRD v2 (see §9–§10 for the architecture diagram
 and the AI/deterministic boundary table)*
@@ -336,7 +336,7 @@ Transaction Interpreter), but it stays out of the build to keep the MVP narrow.
 
 ## The one-paragraph summary for the write-up
 
-Cashflow Companion has exactly **one agent** — an orchestrator that owns the messy
+Headroom has exactly **one agent** — an orchestrator that owns the messy
 boundary between the real world and a deterministic Priority Engine. It wields a
 set of skills, none of which touch the number: a **Transaction Interpreter** (the
 one genuinely AI-hard task — classifying ambiguous deposits and expenses with

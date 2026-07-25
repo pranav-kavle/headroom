@@ -1,4 +1,4 @@
-# Cashflow Companion — Product Requirements Document
+# Headroom — Product Requirements Document
 
 **Version:** 2.0 (fully revised) · **Date:** 2026-07-11 · **Demo Day:** 2026-08-14
 **Owner:** Pranav Kavle · **Status:** Draft for build
@@ -9,7 +9,7 @@
 
 ## 1. TL;DR
 
-Cashflow Companion is the first decision engine in an **autonomous financial
+Headroom is the first decision engine in an **autonomous financial
 decision system for one-person and very small service businesses.** It begins
 by continuously answering and defending one high-stakes question:
 

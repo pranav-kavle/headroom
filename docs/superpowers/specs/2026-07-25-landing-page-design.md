@@ -28,7 +28,7 @@ Faithful port of prototype markup at HTML lines 1595–1737. Copy is taken verba
 from the prototype.
 
 1. **Nav (`LandingNav`)** — brand mark (green rounded square + white check-arrow
-   SVG) + "Cashflow Companion" / "Safe-to-Pay, defended." · a "How it works"
+   SVG) + "Headroom" / "Safe-to-Pay, defended." · a "How it works"
    anchor link to `#how` · auth actions (Client Component).
 2. **Hero (`Hero`)** — eyebrow "For Schedule C freelancers"; serif headline
    *"Know exactly how much you can `<em>`pay yourself.`</em>` Every week."*; sub-copy;
