@@ -12,8 +12,8 @@ export function Hero() {
         </h1>
         <p className={styles.lpSub}>
           Irregular income. Quarterly tax dread. The one question you can never
-          quite answer: <b>can I afford to pay myself this month?</b> Cashflow
-          Companion answers it — and defends the number.
+          quite answer: <b>can I afford to pay myself this month?</b> Headroom
+          answers it — and defends the number.
         </p>
         <div className={styles.lpCta}>
           <SignUpCta className="btn primary lg">Connect your bank</SignUpCta>

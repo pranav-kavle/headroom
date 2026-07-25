@@ -12,7 +12,7 @@ export function LandingNav() {
           <BrandMark />
         </div>
         <div>
-          <div className={styles.name}>Cashflow Companion</div>
+          <div className={styles.name}>Headroom</div>
           <div className={styles.sub}>Safe-to-Pay, defended.</div>
         </div>
       </div>

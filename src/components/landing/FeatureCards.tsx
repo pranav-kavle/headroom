@@ -29,7 +29,7 @@ export function FeatureCards() {
             <div className={styles.secEyebrow} style={{ color: "var(--amber)" }}>The catch</div>
             <h3>It sees the shortfall weeks early.</h3>
             <p>
-              When Acme’s $5,000 invoice slips 30 days, Cashflow Companion catches
+              When Acme’s $5,000 invoice slips 30 days, Headroom catches
               the tax-and-runway squeeze before it lands — lowers your Safe-to-Pay
               to a number you can trust, and protects the floors first.
             </p>
