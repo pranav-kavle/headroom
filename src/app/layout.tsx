@@ -23,7 +23,7 @@ const newsreader = Newsreader({
 });
 
 export const metadata: Metadata = {
-  title: "Cashflow Companion",
+  title: "Headroom",
   description: "Safe-to-Pay, defended.",
 };
 
