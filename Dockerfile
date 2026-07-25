@@ -7,6 +7,14 @@
 # ---- build stage ----
 FROM node:22-alpine AS build
 WORKDIR /src
+
+# Clerk's publishable key is a NEXT_PUBLIC_* var — Next.js inlines it into the
+# client bundle at build time, so it must be present during `next build`, not
+# just at runtime. Passed in from the workflow via --build-arg. (It's public by
+# design; the secret key is injected at runtime on the Container App instead.)
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
 COPY package*.json ./
 RUN npm ci
 COPY . .
