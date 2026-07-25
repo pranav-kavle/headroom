@@ -134,6 +134,15 @@ model BankConnection {
   status         BankConnectionStatus
   lastSyncedAt   DateTime?            @map("last_synced_at")
 
+  // Not in the original ERD (docs/data-model.md) — added because the docs
+  // require the access token to be "encrypted at rest" (SEC-001) but never
+  // named a field to actually hold it. AES-256-GCM ciphertext + iv + auth
+  // tag, encrypted/decrypted in src/lib/token-encryption.ts. Never sent
+  // to the frontend.
+  encryptedAccessToken String @map("encrypted_access_token")
+  accessTokenIv        String @map("access_token_iv")
+  accessTokenAuthTag   String @map("access_token_auth_tag")
+
   user     User          @relation(fields: [userId], references: [id])
   accounts BankAccount[]
 
