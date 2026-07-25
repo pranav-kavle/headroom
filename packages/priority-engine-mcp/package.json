@@ -1,5 +1,5 @@
 {
-  "name": "@cashflow-companion/priority-engine-mcp",
+  "name": "@headroom/priority-engine-mcp",
   "version": "0.1.0",
   "private": true,
   "type": "module",

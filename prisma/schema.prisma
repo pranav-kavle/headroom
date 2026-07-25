@@ -1,4 +1,4 @@
-// Cashflow Companion — Prisma schema
+// Headroom — Prisma schema
 // Source of truth: docs/data-model.md (ERD v1, 2026-07-16). Keep this file
 // and that doc in sync — every entity/enum/relationship below has a 1:1
 // counterpart there.

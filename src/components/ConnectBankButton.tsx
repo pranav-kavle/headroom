@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { usePlaidLink } from "react-plaid-link";
+import { usePlaidLink, type PlaidLinkOnSuccess } from "react-plaid-link";
 
 export function ConnectBankButton() {
   const [linkToken, setLinkToken] = useState<string | null>(null);
@@ -13,7 +13,7 @@ export function ConnectBankButton() {
       .then((data) => setLinkToken(data.linkToken));
   }, []);
 
-  const onSuccess = useCallback((publicToken: string) => {
+  const onSuccess = useCallback<PlaidLinkOnSuccess>((publicToken) => {
     setStatus("Connecting…");
     fetch("/api/plaid/exchange", {
       method: "POST",

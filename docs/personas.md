@@ -1,4 +1,4 @@
-# Cashflow Companion — Personas
+# Headroom — Personas
 
 *v2 · 2026-07-11 · Companion to PRD v2 and the Executive Brief*
 

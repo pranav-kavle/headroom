@@ -1,4 +1,4 @@
-# Cashflow Companion
+# Headroom
 
 The first decision engine in an **autonomous financial decision system for
 one-person and very small service businesses.** It continuously answers and

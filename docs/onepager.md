@@ -1,4 +1,4 @@
-# Cashflow Companion — Executive Brief
+# Headroom — Executive Brief
 
 *One-page product brief · v2 · 2026-07-11*
 

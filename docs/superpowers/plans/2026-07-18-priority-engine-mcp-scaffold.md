@@ -41,7 +41,7 @@ Edit `package.json`, adding `"workspaces"` right after `"private": true`:
 
 ```json
 {
-  "name": "cashflow-companion",
+  "name": "headroom",
   "version": "0.1.0",
   "private": true,
   "workspaces": ["packages/*"],
@@ -52,7 +52,7 @@ Edit `package.json`, adding `"workspaces"` right after `"private": true`:
 
 ```json
 {
-  "name": "@cashflow-companion/priority-engine-mcp",
+  "name": "@headroom/priority-engine-mcp",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -155,12 +155,12 @@ Expected: installs succeed, `node_modules/.package-lock.json` and `package-lock.
 
 - [ ] **Step 9: Run the smoke test**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp`
+Run: `npm test --workspace=@headroom/priority-engine-mcp`
 Expected: PASS — 1 test passed, confirming both the workspace resolves and `DATABASE_URL` is loaded from the root `.env`.
 
 - [ ] **Step 10: Typecheck**
 
-Run: `npm run typecheck --workspace=@cashflow-companion/priority-engine-mcp`
+Run: `npm run typecheck --workspace=@headroom/priority-engine-mcp`
 Expected: no errors.
 
 - [ ] **Step 11: Commit**
@@ -206,7 +206,7 @@ describe("prisma singleton", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- db.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- db.test`
 Expected: FAIL — cannot find module `../db`.
 
 - [ ] **Step 3: Write `db.ts`**
@@ -236,7 +236,7 @@ if (process.env.NODE_ENV !== "production") {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- db.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- db.test`
 Expected: PASS. If it fails with a connection error, confirm Postgres is running and `prisma/migrations` are applied at the repo root (`npm run prisma:migrate`).
 
 - [ ] **Step 5: Commit**
@@ -294,7 +294,7 @@ describe("test fixtures", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- helpers.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- helpers.test`
 Expected: FAIL — cannot find module `./helpers`.
 
 - [ ] **Step 3: Write `helpers.ts`**
@@ -456,7 +456,7 @@ export async function deleteTestUser(prisma: PrismaClient, userId: string) {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- helpers.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- helpers.test`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -570,7 +570,7 @@ describe("getState", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- get-state.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- get-state.test`
 Expected: FAIL — cannot find module `../get-state`.
 
 - [ ] **Step 3: Write `get-state.ts`**
@@ -697,7 +697,7 @@ export async function getState(prisma: PrismaClient, input: GetStateInput): Prom
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- get-state.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- get-state.test`
 Expected: PASS — 3 tests passed.
 
 - [ ] **Step 5: Commit**
@@ -801,7 +801,7 @@ describe("setGoal", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- set-goal.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- set-goal.test`
 Expected: FAIL — cannot find module `../set-goal`.
 
 - [ ] **Step 3: Write `set-goal.ts`**
@@ -884,7 +884,7 @@ export async function setGoal(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- set-goal.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- set-goal.test`
 Expected: PASS — 2 tests passed.
 
 - [ ] **Step 5: Commit**
@@ -1009,7 +1009,7 @@ describe("classifyTransaction", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- classify-transaction.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- classify-transaction.test`
 Expected: FAIL — cannot find module `../classify-transaction`.
 
 - [ ] **Step 3: Write `classify-transaction.ts`**
@@ -1096,7 +1096,7 @@ export async function classifyTransaction(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- classify-transaction.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- classify-transaction.test`
 Expected: PASS — 4 tests passed.
 
 - [ ] **Step 5: Commit**
@@ -1239,7 +1239,7 @@ describe("recordCorrection", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- record-correction.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- record-correction.test`
 Expected: FAIL — cannot find module `../record-correction`.
 
 - [ ] **Step 3: Write `record-correction.ts`**
@@ -1316,7 +1316,7 @@ export async function recordCorrection(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- record-correction.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- record-correction.test`
 Expected: PASS — 3 tests passed. The concurrency test relies on the existing `classification_one_current_per_txn` and `transaction_classification_supersedes_id_key` unique indexes (already in `prisma/migrations/20260718042721_init/migration.sql`) to reject the second concurrent write — no new migration needed.
 
 - [ ] **Step 5: Commit**
@@ -1387,7 +1387,7 @@ describe("getProjections", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- compute-allocation.test get-projections.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- compute-allocation.test get-projections.test`
 Expected: FAIL — cannot find modules `../compute-allocation` and `../get-projections`.
 
 - [ ] **Step 3: Write `compute-allocation.ts`**
@@ -1466,7 +1466,7 @@ export async function getProjections(
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- compute-allocation.test get-projections.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- compute-allocation.test get-projections.test`
 Expected: PASS — 2 tests passed.
 
 - [ ] **Step 6: Commit**
@@ -1582,7 +1582,7 @@ describe("priority engine MCP server wiring", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- server.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- server.test`
 Expected: FAIL — cannot find module `../server`.
 
 - [ ] **Step 3: Write `server.ts`**
@@ -1689,22 +1689,22 @@ await server.connect(transport);
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp -- server.test`
+Run: `npm test --workspace=@headroom/priority-engine-mcp -- server.test`
 Expected: PASS — 3 tests passed.
 
 - [ ] **Step 6: Run the full test suite**
 
-Run: `npm test --workspace=@cashflow-companion/priority-engine-mcp`
+Run: `npm test --workspace=@headroom/priority-engine-mcp`
 Expected: PASS — all tests across all 9 tasks pass (smoke, db, helpers, get-state ×3, set-goal ×2, classify-transaction ×4, record-correction ×3, compute-allocation, get-projections, server ×3 — 20 tests total).
 
 - [ ] **Step 7: Typecheck the whole package**
 
-Run: `npm run typecheck --workspace=@cashflow-companion/priority-engine-mcp`
+Run: `npm run typecheck --workspace=@headroom/priority-engine-mcp`
 Expected: no errors.
 
 - [ ] **Step 8: Manually verify the stdio entrypoint starts**
 
-Run: `npm run start --workspace=@cashflow-companion/priority-engine-mcp &`
+Run: `npm run start --workspace=@headroom/priority-engine-mcp &`
 Then send a single JSON-RPC `initialize` request on stdin (or use `npx @modelcontextprotocol/inspector node --loader tsx packages/priority-engine-mcp/src/index.ts` for an interactive check) and confirm the process responds instead of crashing. Stop the process afterward.
 Expected: the server starts without throwing and responds to `initialize`.
 

@@ -1,9 +1,9 @@
 ---
-name: cashflow-companion-context
-description: Use when working on the Cashflow Companion codebase — covers architecture, AI/deterministic boundary, Demo Day acceptance bars, canonical scenario, MCP sources, and key constraints
+name: headroom-context
+description: Use when working on the Headroom codebase — covers architecture, AI/deterministic boundary, Demo Day acceptance bars, canonical scenario, MCP sources, and key constraints
 ---
 
-# Cashflow Companion — Project Context
+# Headroom — Project Context
 
 ## Overview
 Financial decision engine for freelancers (sole-prop Schedule C) answering "How much can I safely pay myself?" Demo Day: **Aug 14, 2026**. Current week: W4 (Jul 14–20).

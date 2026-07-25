@@ -1,4 +1,4 @@
-# Cashflow Companion — Pass 2: Solution Definition & Architecture
+# Headroom — Pass 2: Solution Definition & Architecture
 
 *Solution architecture pass · analysis-only narrative + architecture, no epics/stories/code ·
 generated 2026-07-16*
@@ -22,7 +22,7 @@ that item).
 
 ## 1. Executive summary
 
-Cashflow Companion's Pass 1 analysis is directionally sound — the FR catalog, ERD read, and gap
+Headroom's Pass 1 analysis is directionally sound — the FR catalog, ERD read, and gap
 list all check out against the primary sources — but its **headline counts contain arithmetic
 errors** and, more importantly, **it does not separate "blocking for Demo Day" from "blocking
 before real users."** Correcting both is the main work product of this pass's §2 (correction log)
@@ -261,7 +261,7 @@ flowchart LR
     User(("End User<br/>(persona)"))
     Eval(("Program<br/>Evaluator"))
 
-    subgraph App["Cashflow Companion"]
+    subgraph App["Headroom"]
         Web["Web App<br/>(dashboard)"]
         Agent["Orchestrating Agent<br/>(Agent SDK)"]
         Engine["Financial State +<br/>Priority Engine MCP<br/>★ custom, deterministic ★"]

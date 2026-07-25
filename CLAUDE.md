@@ -1,12 +1,12 @@
-# Cashflow Companion — Claude Instructions
+# Headroom — Claude Instructions
 
 ## Project Skill
 
 When working on this codebase, load the project context skill first:
 
 ```
-Skill: cashflow-companion-context
-Location: .claude/skills/cashflow-companion-context/SKILL.md
+Skill: headroom-context
+Location: .claude/skills/headroom-context/SKILL.md
 ```
 
 This skill covers: architecture, AI/deterministic boundary, Demo Day acceptance bars, canonical scenario ($3,650), MCP sources, tech stack, and cut order.

@@ -1,4 +1,4 @@
-# Cashflow Companion — Pass 3: Implementation Backlog
+# Headroom — Pass 3: Implementation Backlog
 
 *Implementation backlog · generated 2026-07-16 · baseline: `docs/analysis/pass-2-solution-definition.md`*
 

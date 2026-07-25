@@ -1,4 +1,4 @@
-# Cashflow Companion — Pass 1 Document Analysis
+# Headroom — Pass 1 Document Analysis
 
 *Requirements & documentation analysis · analysis-only, no epics/stories/code · generated 2026-07-16*
 
@@ -19,7 +19,7 @@ redesigned.
 
 ## 1. Executive summary
 
-Cashflow Companion is a capstone project (Demo Day **2026-08-14**) building "the first
+Headroom is a capstone project (Demo Day **2026-08-14**) building "the first
 decision engine in an autonomous financial decision system for one-person and very small
 service businesses" — a system that continuously answers *"how much can I safely pay myself
 right now?"* for sole-proprietor (Schedule C) freelancers with commingled bank accounts and
