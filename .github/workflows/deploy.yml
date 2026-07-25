@@ -35,11 +35,18 @@ jobs:
       - name: Build and push image (in ACR)
         run: |
           az acr build --registry ${{ vars.ACR_NAME }} \
-            --image ${{ vars.STUDENT }}/web:${{ github.sha }} .
+            --image ${{ vars.STUDENT }}/web:${{ github.sha }} \
+            --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" \
+            .
 
       - name: Deploy to Container App
+        # Sets the Clerk env vars on every deploy (idempotent). The publishable
+        # key is public; the secret key is server-side and injected at runtime.
         run: |
           az containerapp update \
             --resource-group rg-students-platform \
             --name ca-${{ vars.STUDENT }} \
-            --image ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.STUDENT }}/web:${{ github.sha }}
+            --image ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.STUDENT }}/web:${{ github.sha }} \
+            --set-env-vars \
+              NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" \
+              CLERK_SECRET_KEY="${{ secrets.CLERK_SECRET_KEY }}"
