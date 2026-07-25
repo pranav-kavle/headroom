@@ -1,6 +1,30 @@
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { ConnectBankButton } from "@/components/ConnectBankButton";
+
 export default function Home() {
   return (
     <main style={{ maxWidth: 640, margin: "80px auto", padding: "0 24px" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 12,
+          marginBottom: 24,
+        }}
+      >
+        <Show when="signed-out">
+          <SignInButton mode="modal">
+            <button className="btn ghost sm">Sign in</button>
+          </SignInButton>
+          <SignUpButton mode="modal">
+            <button className="btn primary sm">Sign up</button>
+          </SignUpButton>
+        </Show>
+        <Show when="signed-in">
+          <ConnectBankButton />
+          <UserButton />
+        </Show>
+      </div>
       <p className="sec-title">Design system check</p>
       <div className="card pad">
         <h1 className="serif" style={{ fontSize: 32 }}>
