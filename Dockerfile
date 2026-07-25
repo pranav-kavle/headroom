@@ -30,11 +30,21 @@ COPY --from=build /src/.next/standalone ./
 COPY --from=build /src/.next/static ./.next/static
 COPY --from=build /src/public ./public
 
-# Prisma: schema + migrations + the CLI for `migrate deploy` at startup
+# Prisma schema + migrations, and the config file: Prisma 7 reads the migration
+# datasource URL from prisma.config.ts (the schema no longer allows a `url`), so
+# `migrate deploy` needs the config present at startup.
 COPY --from=build /src/prisma ./prisma
-COPY --from=build /src/node_modules/prisma ./node_modules/prisma
-COPY --from=build /src/node_modules/@prisma ./node_modules/@prisma
-COPY --from=build /src/node_modules/.bin/prisma ./node_modules/.bin/prisma
+COPY --from=build /src/prisma.config.ts ./prisma.config.ts
+
+# Ship the full node_modules for the migrate step. The Prisma 7 CLI loads its
+# config through @prisma/config, whose transitive closure (effect, c12, jiti,
+# dotenv, …) is large and NOT traced into the Next standalone bundle. Copying
+# the whole tree (a superset of standalone's trimmed node_modules) is reliable;
+# hand-picking subtrees breaks on the next missing transitive dep.
+COPY --from=build /src/node_modules ./node_modules
 
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+# Invoke the Prisma CLI at its real path (not via node_modules/.bin/prisma, whose
+# symlink gets dereferenced by COPY into the wrong dir, breaking .wasm resolution)
+# so `migrate deploy` finds the .wasm files sitting alongside it in prisma/build/.
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
