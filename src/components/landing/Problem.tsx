@@ -5,7 +5,7 @@ export function Problem() {
     <div className={styles.lpSec}>
       <div className={styles.lpInner}>
         <div className={styles.secEyebrow}>The problem</div>
-        <h2 className="serif">When income is irregular, every dollar is contested.</h2>
+        <h2 className="serif">When income is unpredictable, every dollar has to fight for a job.</h2>
         <p className={styles.lead}>
           A retainer here, an invoice that lands three weeks late there. Meanwhile
           taxes, a runway floor, your own pay, savings and debt are all pulling at
