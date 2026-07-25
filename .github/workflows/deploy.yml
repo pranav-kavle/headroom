@@ -15,6 +15,7 @@ name: deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:   # adds a manual "Run workflow" button on the Actions tab
 
 permissions:
   id-token: write   # OIDC token for azure/login — this is the whole auth story
