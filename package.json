@@ -20,10 +20,8 @@
     "@prisma/client": "^7.8.0",
     "next": "16.2.10",
     "pg": "^8.22.0",
-    "plaid": "^45.0.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "react-plaid-link": "^5.0.0"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@types/node": "^20",
