@@ -14,9 +14,7 @@ describe("engine MCP server wiring", () => {
   it("starts cleanly with an empty tool registry", async () => {
     const client = await connectedClient(createServer());
 
-    const { tools } = await client.listTools();
-
-    expect(tools).toEqual([]);
+    expect(client.getServerCapabilities()?.tools).toBeUndefined();
 
     await client.close();
   });

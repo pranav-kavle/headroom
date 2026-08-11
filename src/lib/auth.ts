@@ -23,7 +23,6 @@ export async function getOrCreateUser() {
     data: {
       clerkUserId,
       email,
-      v1Eligibility: "schedule_c_supported",
     },
   });
 }

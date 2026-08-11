@@ -1,7 +1,10 @@
 // Headroom — Prisma schema
-// Source of truth: docs/data-model.md (ERD v1, 2026-07-16). Keep this file
-// and that doc in sync — every entity/enum/relationship below has a 1:1
-// counterpart there.
+//
+// Surviving models from the pre-pivot cashflow schema: the agent-run audit
+// chain, kept because it is already the right shape for the Ledger. See
+// docs/superpowers/specs/2026-08-11-headroom-commitments-design.md §5.
+// The life graph (Person, Commitment, Artifact, ...) is not modeled here yet
+// — it lands in a later implementation plan.
 
 generator client {
   provider = "prisma-client"
@@ -13,408 +16,19 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Identity & config
+// Identity
 // ---------------------------------------------------------------------------
-
-enum V1Eligibility {
-  schedule_c_supported
-}
 
 model User {
-  id            String        @id @default(uuid())
-  clerkUserId   String        @unique @map("clerk_user_id")
-  email         String
-  v1Eligibility V1Eligibility @map("v1_eligibility")
-  createdAt     DateTime      @default(now()) @map("created_at")
+  id          String   @id @default(uuid())
+  clerkUserId String   @unique @map("clerk_user_id")
+  email       String
+  createdAt   DateTime @default(now()) @map("created_at")
 
-  bankConnections   BankConnection[]
-  goalConfigs       GoalConfig[]
-  taxProfiles       TaxProfile[]
-  expectedIncomes   ExpectedIncome[]
-  recurringExpenses RecurringExpense[]
-  triggerEvents     TriggerEvent[]
-  agentRuns         AgentRun[]
-  plans             Plan[]
+  triggerEvents TriggerEvent[]
+  agentRuns     AgentRun[]
 
   @@map("user")
-}
-
-model GoalConfig {
-  id            String   @id @default(uuid())
-  userId        String   @map("user_id")
-  versionNo     Int      @map("version_no")
-  isCurrent     Boolean  @map("is_current")
-  effectiveFrom DateTime @map("effective_from")
-
-  user          User           @relation(fields: [userId], references: [id])
-  bucketTargets BucketTarget[]
-  plans         Plan[]
-
-  // "is_current" partial-uniqueness (one current row per user) is enforced by a
-  // raw-SQL partial unique index added in the initial migration — Prisma's
-  // schema DSL has no `WHERE` clause for @@unique, so it can't be declared here.
-  @@index([userId])
-  @@map("goal_config")
-}
-
-enum BucketKind {
-  taxes
-  runway
-  pay
-  savings
-  debt
-}
-
-model BucketTarget {
-  id            String     @id @default(uuid())
-  goalConfigId  String     @map("goal_config_id")
-  bucketKind    BucketKind @map("bucket_kind")
-  priorityOrder Int        @map("priority_order")
-  targetAmount  Decimal    @map("target_amount") @db.Decimal(14, 2)
-  isFloor       Boolean    @map("is_floor")
-  floorAmount   Decimal?   @map("floor_amount") @db.Decimal(14, 2)
-
-  goalConfig GoalConfig @relation(fields: [goalConfigId], references: [id])
-
-  @@index([goalConfigId])
-  @@map("bucket_target")
-}
-
-enum FilingStatus {
-  single
-  mfj
-  hoh
-  mfs
-  qw
-}
-
-enum TaxTreatment {
-  schedule_c
-}
-
-model TaxProfile {
-  id                      String       @id @default(uuid())
-  userId                  String       @map("user_id")
-  versionNo               Int          @map("version_no")
-  isCurrent               Boolean      @map("is_current")
-  taxYear                 Int          @map("tax_year")
-  filingStatus            FilingStatus @map("filing_status")
-  taxTreatment            TaxTreatment @map("tax_treatment")
-  residentTaxJurisdiction String       @map("resident_tax_jurisdiction")
-  effectiveFrom           DateTime     @map("effective_from")
-
-  user  User   @relation(fields: [userId], references: [id])
-  plans Plan[]
-
-  // See GoalConfig above: partial-uniqueness is enforced via raw SQL in the migration.
-  @@index([userId])
-  @@map("tax_profile")
-}
-
-// ---------------------------------------------------------------------------
-// Bank data (raw) — immutable aggregator feed
-// ---------------------------------------------------------------------------
-
-enum BankProvider {
-  plaid
-  teller
-}
-
-enum BankConnectionStatus {
-  active
-  error
-  stale
-}
-
-model BankConnection {
-  id             String               @id @default(uuid())
-  userId         String               @map("user_id")
-  provider       BankProvider
-  providerItemId String               @map("provider_item_id")
-  status         BankConnectionStatus
-  lastSyncedAt   DateTime?            @map("last_synced_at")
-
-  // Not in the original ERD (docs/data-model.md) — added because the docs
-  // require the access token to be "encrypted at rest" (SEC-001) but never
-  // named a field to actually hold it. AES-256-GCM ciphertext + iv + auth
-  // tag, encrypted/decrypted in src/lib/token-encryption.ts. Never sent
-  // to the frontend.
-  encryptedAccessToken String @map("encrypted_access_token")
-  accessTokenIv        String @map("access_token_iv")
-  accessTokenAuthTag   String @map("access_token_auth_tag")
-
-  user     User          @relation(fields: [userId], references: [id])
-  accounts BankAccount[]
-
-  @@index([userId])
-  @@map("bank_connection")
-}
-
-enum BankAccountType {
-  checking
-  savings
-}
-
-model BankAccount {
-  id                String          @id @default(uuid())
-  connectionId      String          @map("connection_id")
-  providerAccountId String          @map("provider_account_id")
-  type              BankAccountType
-  isCommingled      Boolean         @map("is_commingled")
-
-  connection       BankConnection           @relation(fields: [connectionId], references: [id])
-  transactions     Transaction[]
-  balanceSnapshots AccountBalanceSnapshot[]
-
-  @@index([connectionId])
-  @@map("bank_account")
-}
-
-enum BalanceSnapshotSource {
-  aggregator
-  scripted
-}
-
-model AccountBalanceSnapshot {
-  id        String                @id @default(uuid())
-  accountId String                @map("account_id")
-  balance   Decimal               @db.Decimal(14, 2)
-  asOf      DateTime              @map("as_of")
-  syncId    String                @map("sync_id")
-  source    BalanceSnapshotSource
-
-  account        BankAccount                @relation(fields: [accountId], references: [id])
-  planInputLinks PlanInputBalanceSnapshot[]
-
-  @@index([accountId])
-  @@map("account_balance_snapshot")
-}
-
-model Transaction {
-  id             String   @id @default(uuid())
-  accountId      String   @map("account_id")
-  providerTxnId  String   @map("provider_txn_id")
-  postedDate     DateTime @map("posted_date") @db.Date
-  amount         Decimal  @db.Decimal(14, 2)
-  rawDescription String   @map("raw_description")
-  counterparty   String?
-  channel        String?
-  ingestedAt     DateTime @default(now()) @map("ingested_at")
-
-  account               BankAccount                 @relation(fields: [accountId], references: [id])
-  classifications       TransactionClassification[]
-  recurringExpenseTxns  RecurringExpenseTxn[]
-  settledExpectedIncome ExpectedIncomeVersion[]     @relation("ExpectedIncomeSettlement")
-
-  @@unique([accountId, providerTxnId])
-  @@index([accountId])
-  @@map("transaction")
-}
-
-// ---------------------------------------------------------------------------
-// Interpretation — the AI-hard layer
-// ---------------------------------------------------------------------------
-
-enum ClassificationSource {
-  seed
-  model
-  user
-}
-
-enum ClassificationLabel {
-  income
-  transfer
-  refund
-  repayment
-  loan
-  other
-  fixed_recurring
-  variable_discretionary
-}
-
-enum ClassificationCadence {
-  retainer
-  project
-  windfall
-}
-
-enum ReviewState {
-  pending
-  confirmed
-  corrected
-  dismissed
-}
-
-model TransactionClassification {
-  id            String                 @id @default(uuid())
-  transactionId String                 @map("transaction_id")
-  source        ClassificationSource
-  label         ClassificationLabel
-  cadence       ClassificationCadence?
-  confidence    Decimal?               @db.Decimal(5, 4)
-  evidence      Json?
-  reviewState   ReviewState            @map("review_state")
-  supersedesId  String?                @unique @map("supersedes_id")
-  isCurrent     Boolean                @map("is_current")
-  modelVersion  String?                @map("model_version")
-  createdAt     DateTime               @default(now()) @map("created_at")
-
-  transaction       Transaction                @relation(fields: [transactionId], references: [id])
-  supersedes        TransactionClassification? @relation("ClassificationSupersession", fields: [supersedesId], references: [id])
-  supersededBy      TransactionClassification? @relation("ClassificationSupersession")
-  planInputLinks    PlanInputClassification[]
-  resultingCheckIns CheckIn[]
-
-  // See GoalConfig above: partial-uniqueness is enforced via raw SQL in the migration.
-  @@index([transactionId])
-  @@map("transaction_classification")
-}
-
-model RecurringExpense {
-  id       String @id @default(uuid())
-  userId   String @map("user_id")
-  merchant String
-
-  user     User                      @relation(fields: [userId], references: [id])
-  versions RecurringExpenseVersion[]
-
-  @@unique([userId, merchant])
-  @@index([userId])
-  @@map("recurring_expense")
-}
-
-enum RecurringExpenseStatus {
-  active
-  new
-  changed
-}
-
-model RecurringExpenseVersion {
-  id                 String                 @id @default(uuid())
-  recurringExpenseId String                 @map("recurring_expense_id")
-  versionNo          Int                    @map("version_no")
-  typicalAmount      Decimal                @map("typical_amount") @db.Decimal(14, 2)
-  cadence            ClassificationCadence?
-  status             RecurringExpenseStatus
-  isCurrent          Boolean                @map("is_current")
-  effectiveFrom      DateTime               @map("effective_from")
-
-  recurringExpense RecurringExpense            @relation(fields: [recurringExpenseId], references: [id])
-  memberTxns       RecurringExpenseTxn[]
-  planInputLinks   PlanInputRecurringExpense[]
-
-  // See GoalConfig above: partial-uniqueness is enforced via raw SQL in the migration.
-  @@index([recurringExpenseId])
-  @@map("recurring_expense_version")
-}
-
-model RecurringExpenseTxn {
-  recurringExpenseVersionId String @map("recurring_expense_version_id")
-  transactionId             String @map("transaction_id")
-
-  recurringExpenseVersion RecurringExpenseVersion @relation(fields: [recurringExpenseVersionId], references: [id])
-  transaction             Transaction             @relation(fields: [transactionId], references: [id])
-
-  @@id([recurringExpenseVersionId, transactionId])
-  @@map("recurring_expense_txn")
-}
-
-model ExpectedIncome {
-  id         String @id @default(uuid())
-  userId     String @map("user_id")
-  sourceName String @map("source_name")
-  invoiceRef String @map("invoice_ref")
-
-  user     User                    @relation(fields: [userId], references: [id])
-  versions ExpectedIncomeVersion[]
-
-  @@unique([userId, invoiceRef])
-  @@index([userId])
-  @@map("expected_income")
-}
-
-enum ExpectedIncomeStatus {
-  pending
-  late
-  received
-  possible
-}
-
-model ExpectedIncomeVersion {
-  id                    String               @id @default(uuid())
-  expectedIncomeId      String               @map("expected_income_id")
-  versionNo             Int                  @map("version_no")
-  amount                Decimal              @db.Decimal(14, 2)
-  expectedDate          DateTime             @map("expected_date") @db.Date
-  status                ExpectedIncomeStatus
-  receivedTransactionId String?              @map("received_transaction_id")
-  isCurrent             Boolean              @map("is_current")
-  effectiveFrom         DateTime             @map("effective_from")
-
-  expectedIncome      ExpectedIncome            @relation(fields: [expectedIncomeId], references: [id])
-  receivedTransaction Transaction?              @relation("ExpectedIncomeSettlement", fields: [receivedTransactionId], references: [id])
-  planInputLinks      PlanInputExpectedIncome[]
-
-  // See GoalConfig above: partial-uniqueness is enforced via raw SQL in the migration.
-  @@index([expectedIncomeId])
-  @@map("expected_income_version")
-}
-
-// ---------------------------------------------------------------------------
-// Tax reference — cited, versioned rates and deadlines
-// ---------------------------------------------------------------------------
-
-model TaxRuleSet {
-  id            String       @id @default(uuid())
-  taxYear       Int          @map("tax_year")
-  jurisdiction  String
-  filingStatus  FilingStatus @map("filing_status")
-  seTaxRate     Decimal      @map("se_tax_rate") @db.Decimal(6, 5)
-  qbiParams     Json         @map("qbi_params")
-  version       Int
-  source        String
-  citation      String
-  sourceUrl     String       @map("source_url")
-  publishedDate DateTime     @map("published_date") @db.Date
-  checksum      String
-  ingestedAt    DateTime     @default(now()) @map("ingested_at")
-
-  brackets       TaxBracket[]
-  planInputLinks PlanInputTaxRuleSet[]
-
-  @@unique([taxYear, jurisdiction, filingStatus, version])
-  @@map("tax_rule_set")
-}
-
-model TaxBracket {
-  id           String   @id @default(uuid())
-  taxRuleSetId String   @map("tax_rule_set_id")
-  lowerBound   Decimal  @map("lower_bound") @db.Decimal(14, 2)
-  upperBound   Decimal? @map("upper_bound") @db.Decimal(14, 2)
-  rate         Decimal  @db.Decimal(6, 5)
-
-  taxRuleSet TaxRuleSet @relation(fields: [taxRuleSetId], references: [id])
-
-  @@index([taxRuleSetId])
-  @@map("tax_bracket")
-}
-
-enum TaxQuarter {
-  Q1
-  Q2
-  Q3
-  Q4
-}
-
-model TaxDueDate {
-  id           String     @id @default(uuid())
-  taxYear      Int        @map("tax_year")
-  quarter      TaxQuarter
-  dueDate      DateTime   @map("due_date") @db.Date
-  jurisdiction String
-
-  @@unique([taxYear, quarter, jurisdiction])
-  @@map("tax_due_date")
 }
 
 // ---------------------------------------------------------------------------
@@ -466,7 +80,6 @@ model AgentRun {
   user         User              @relation(fields: [userId], references: [id])
   triggerEvent TriggerEvent      @relation(fields: [triggerEventId], references: [id])
   attempts     AgentRunAttempt[]
-  plans        Plan[]
   checkIns     CheckIn[]
 
   @@index([userId])
@@ -491,229 +104,13 @@ model AgentRunAttempt {
 }
 
 // ---------------------------------------------------------------------------
-// Plan output — the computed Safe-to-Pay result and its breakdown
-// ---------------------------------------------------------------------------
-
-enum PlanRunType {
-  seed
-  synthesize
-  replan
-}
-
-enum PlanStatus {
-  provisional
-  final
-  blocked
-  infeasible
-}
-
-enum InputFreshnessStatus {
-  fresh
-  stale
-  unknown
-}
-
-enum TaxBombStatus {
-  funded
-  gap
-  at_risk
-}
-
-model Plan {
-  id                      String               @id @default(uuid())
-  userId                  String               @map("user_id")
-  agentRunId              String               @map("agent_run_id")
-  goalConfigId            String               @map("goal_config_id")
-  taxProfileId            String               @map("tax_profile_id")
-  runType                 PlanRunType          @map("run_type")
-  planStatus              PlanStatus           @map("plan_status")
-  inputFreshnessStatus    InputFreshnessStatus @map("input_freshness_status")
-  engineVersion           String               @map("engine_version")
-  engineBuildSha          String               @map("engine_build_sha")
-  safeToPayLow            Decimal              @map("safe_to_pay_low") @db.Decimal(14, 2)
-  safeToPayHigh           Decimal              @map("safe_to_pay_high") @db.Decimal(14, 2)
-  promisedNumber          Decimal              @map("promised_number") @db.Decimal(14, 2)
-  taxBombStatus           TaxBombStatus        @map("tax_bomb_status")
-  taxGapAmount            Decimal?             @map("tax_gap_amount") @db.Decimal(14, 2)
-  runwayMonths            Decimal?             @map("runway_months") @db.Decimal(6, 2)
-  appliedForecastParams   Json                 @map("applied_forecast_params")
-  assumptions             Json
-  inputDigest             String               @map("input_digest")
-  inputDigestAlgo         String               @map("input_digest_algo")
-  inputDigestSpecVersion  String               @map("input_digest_spec_version")
-  outputDigest            String               @map("output_digest")
-  outputDigestAlgo        String               @map("output_digest_algo")
-  outputDigestSpecVersion String               @map("output_digest_spec_version")
-  debugInputPayload       Json?                @map("debug_input_payload")
-  createdAt               DateTime             @default(now()) @map("created_at")
-
-  user       User       @relation(fields: [userId], references: [id])
-  agentRun   AgentRun   @relation(fields: [agentRunId], references: [id])
-  goalConfig GoalConfig @relation(fields: [goalConfigId], references: [id])
-  taxProfile TaxProfile @relation(fields: [taxProfileId], references: [id])
-
-  allocationLines       AllocationLine[]
-  projections           Projection[]
-  warnings              PlanWarning[]
-  checkIns              CheckIn[]
-  recommendationOutcome RecommendationOutcome?
-
-  inputClassifications   PlanInputClassification[]
-  inputExpectedIncomes   PlanInputExpectedIncome[]
-  inputRecurringExpenses PlanInputRecurringExpense[]
-  inputBalanceSnapshots  PlanInputBalanceSnapshot[]
-  inputTaxRuleSets       PlanInputTaxRuleSet[]
-
-  @@index([userId])
-  @@index([agentRunId])
-  @@map("plan")
-}
-
-enum FundedStatus {
-  funded
-  partial
-  paused
-  deferred
-  short
-}
-
-model AllocationLine {
-  id                String       @id @default(uuid())
-  planId            String       @map("plan_id")
-  bucketKind        BucketKind   @map("bucket_kind")
-  priorityOrderUsed Int          @map("priority_order_used")
-  targetAmount      Decimal      @map("target_amount") @db.Decimal(14, 2)
-  floorAmount       Decimal?     @map("floor_amount") @db.Decimal(14, 2)
-  allocatedAmount   Decimal      @map("allocated_amount") @db.Decimal(14, 2)
-  shortfallAmount   Decimal?     @map("shortfall_amount") @db.Decimal(14, 2)
-  fundedStatus      FundedStatus @map("funded_status")
-
-  plan Plan @relation(fields: [planId], references: [id])
-
-  @@index([planId])
-  @@map("allocation_line")
-}
-
-enum ProjectionKind {
-  income
-  runway
-  spend
-}
-
-model Projection {
-  id         String         @id @default(uuid())
-  planId     String         @map("plan_id")
-  kind       ProjectionKind
-  low        Decimal        @db.Decimal(14, 2)
-  high       Decimal        @db.Decimal(14, 2)
-  point      Decimal        @db.Decimal(14, 2)
-  assumption String
-
-  plan Plan @relation(fields: [planId], references: [id])
-
-  @@index([planId])
-  @@map("projection")
-}
-
-enum PlanWarningCode {
-  unresolved_classification
-  stale_feed
-  tax_shortfall
-  floor_breach
-}
-
-enum PlanWarningSeverity {
-  info
-  warning
-  critical
-}
-
-model PlanWarning {
-  id         String              @id @default(uuid())
-  planId     String              @map("plan_id")
-  code       PlanWarningCode
-  severity   PlanWarningSeverity
-  subjectRef String?             @map("subject_ref")
-  message    String
-
-  plan Plan @relation(fields: [planId], references: [id])
-
-  @@index([planId])
-  @@map("plan_warning")
-}
-
-// ---------------------------------------------------------------------------
-// Lineage — exact versioned inputs behind each plan (auditability)
-// ---------------------------------------------------------------------------
-
-enum AppliedTreatment {
-  include
-  exclude
-  hold
-}
-
-model PlanInputClassification {
-  planId           String           @map("plan_id")
-  classificationId String           @map("classification_id")
-  appliedTreatment AppliedTreatment @map("applied_treatment")
-  includedAmount   Decimal?         @map("included_amount") @db.Decimal(14, 2)
-  policyRuleCode   String?          @map("policy_rule_code")
-
-  plan           Plan                      @relation(fields: [planId], references: [id])
-  classification TransactionClassification @relation(fields: [classificationId], references: [id])
-
-  @@id([planId, classificationId])
-  @@map("plan_input_classification")
-}
-
-model PlanInputExpectedIncome {
-  planId                  String   @map("plan_id")
-  expectedIncomeVersionId String   @map("expected_income_version_id")
-  includedAmount          Decimal? @map("included_amount") @db.Decimal(14, 2)
-
-  plan                  Plan                  @relation(fields: [planId], references: [id])
-  expectedIncomeVersion ExpectedIncomeVersion @relation(fields: [expectedIncomeVersionId], references: [id])
-
-  @@id([planId, expectedIncomeVersionId])
-  @@map("plan_input_expected_income")
-}
-
-model PlanInputRecurringExpense {
-  planId                    String @map("plan_id")
-  recurringExpenseVersionId String @map("recurring_expense_version_id")
-
-  plan                    Plan                    @relation(fields: [planId], references: [id])
-  recurringExpenseVersion RecurringExpenseVersion @relation(fields: [recurringExpenseVersionId], references: [id])
-
-  @@id([planId, recurringExpenseVersionId])
-  @@map("plan_input_recurring_expense")
-}
-
-model PlanInputBalanceSnapshot {
-  planId            String @map("plan_id")
-  balanceSnapshotId String @map("balance_snapshot_id")
-
-  plan            Plan                   @relation(fields: [planId], references: [id])
-  balanceSnapshot AccountBalanceSnapshot @relation(fields: [balanceSnapshotId], references: [id])
-
-  @@id([planId, balanceSnapshotId])
-  @@map("plan_input_balance_snapshot")
-}
-
-model PlanInputTaxRuleSet {
-  planId       String @map("plan_id")
-  taxRuleSetId String @map("tax_rule_set_id")
-
-  plan       Plan       @relation(fields: [planId], references: [id])
-  taxRuleSet TaxRuleSet @relation(fields: [taxRuleSetId], references: [id])
-
-  @@id([planId, taxRuleSetId])
-  @@map("plan_input_tax_rule_set")
-}
-
-// ---------------------------------------------------------------------------
 // Feedback loop — the one surfaced decision and whether the user acted on it
 // ---------------------------------------------------------------------------
+//
+// CheckIn and RecommendationOutcome both had a required relation to the now
+// -deleted Plan model. Per the teardown plan, only the offending relation
+// fields are stripped here; the rest of each model survives mechanically
+// unchanged, ready to be re-pointed at a future Commitment/Brief model.
 
 enum CheckInChannel {
   ui
@@ -721,22 +118,17 @@ enum CheckInChannel {
 }
 
 model CheckIn {
-  id                        String         @id @default(uuid())
-  planId                    String         @map("plan_id")
-  agentRunId                String         @map("agent_run_id")
-  decisionText              String         @map("decision_text")
-  whatChanged               String?        @map("what_changed")
-  materialityReason         String?        @map("materiality_reason")
-  channel                   CheckInChannel
-  response                  Json?
-  resultingClassificationId String?        @map("resulting_classification_id")
-  respondedAt               DateTime?      @map("responded_at")
+  id                String         @id @default(uuid())
+  agentRunId        String         @map("agent_run_id")
+  decisionText      String         @map("decision_text")
+  whatChanged       String?        @map("what_changed")
+  materialityReason String?        @map("materiality_reason")
+  channel           CheckInChannel
+  response          Json?
+  respondedAt       DateTime?      @map("responded_at")
 
-  plan                    Plan                       @relation(fields: [planId], references: [id])
-  agentRun                AgentRun                   @relation(fields: [agentRunId], references: [id])
-  resultingClassification TransactionClassification? @relation(fields: [resultingClassificationId], references: [id])
+  agentRun AgentRun @relation(fields: [agentRunId], references: [id])
 
-  @@index([planId])
   @@index([agentRunId])
   @@map("check_in")
 }
@@ -748,15 +140,12 @@ enum DetectionMethod {
 
 model RecommendationOutcome {
   id                String           @id @default(uuid())
-  planId            String           @unique @map("plan_id")
   recommendedAmount Decimal          @map("recommended_amount") @db.Decimal(14, 2)
   acted             Boolean?
   observedAmount    Decimal?         @map("observed_amount") @db.Decimal(14, 2)
   detectionMethod   DetectionMethod? @map("detection_method")
   confidence        Decimal?         @db.Decimal(5, 4)
   observedAt        DateTime?        @map("observed_at")
-
-  plan Plan @relation(fields: [planId], references: [id])
 
   @@map("recommendation_outcome")
 }
