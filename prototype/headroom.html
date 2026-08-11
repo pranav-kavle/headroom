@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Headroom — prototype</title>
+<style>
+:root{
+  --canvas:#F1F1F4;
+  --bg:#FFFFFF;
+  --surface-2:#FAFAFB;
+  --ink:#101219;
+  --ink-2:#6B6F7E;
+  --ink-3:#9DA1AE;
+  --line:#E9EAEF;
+  --line-2:#F2F3F6;
+  --violet:#5B4FE9;
+  --violet-ink:#463BC9;
+  --violet-bg:#F2F0FE;
+  --violet-line:#DCD7FC;
+  --green:#15825A;
+  --green-bg:#E8F5EF;
+  --amber:#A96605;
+  --amber-bg:#FCF2E3;
+  --red:#C33B31;
+  --red-bg:#FCEBE9;
+  --r-lg:16px; --r-md:12px; --r-sm:8px;
+  --sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased}
+
+/* ---------- deck chrome ---------- */
+.deck{max-width:1340px;margin:0 auto;padding:48px 32px 80px}
+.deck-head{margin-bottom:40px}
+.deck-head h1{font-size:26px;letter-spacing:-.02em;font-weight:640}
+.deck-head p{color:var(--ink-2);font-size:15px;margin-top:8px;max-width:620px;line-height:1.55}
+.swatches{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap}
+.sw{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);
+    border-radius:999px;padding:6px 12px 6px 8px;font-size:12px;color:var(--ink-2)}
+.sw i{width:14px;height:14px;border-radius:4px;display:block}
+.legend{margin-top:20px;display:flex;gap:28px;flex-wrap:wrap;font-size:13px;color:var(--ink-2)}
+.legend b{color:var(--ink);font-weight:580}
+
+.frames{display:flex;gap:36px;flex-wrap:wrap;justify-content:flex-start}
+.frame-wrap{width:390px}
+.frame-label{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--ink-2);
+   margin-bottom:12px;display:flex;align-items:baseline;gap:8px}
+.frame-label span{font-weight:400;color:var(--ink-3)}
+
+/* ---------- phone ---------- */
+.phone{width:390px;height:812px;background:var(--bg);border-radius:42px;
+  border:1px solid #DFE0E6;box-shadow:0 16px 44px rgba(16,18,25,.10),0 2px 6px rgba(16,18,25,.04);
+  overflow:hidden;position:relative;display:flex;flex-direction:column}
+.statusbar{height:46px;flex:0 0 46px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 28px;font-size:13px;font-weight:600;letter-spacing:-.01em}
+.sb-right{display:flex;align-items:center;gap:5px}
+.sb-right i{display:block;background:var(--ink);border-radius:1px}
+.bars{display:flex;align-items:flex-end;gap:2px;height:10px}
+.bars i{width:3px}
+.bars i:nth-child(1){height:4px}.bars i:nth-child(2){height:6px}
+.bars i:nth-child(3){height:8px}.bars i:nth-child(4){height:10px}
+.batt{width:22px;height:11px;border:1.2px solid var(--ink);border-radius:3px;position:relative;opacity:.9}
+.batt::after{content:"";position:absolute;inset:1.5px;width:70%;background:var(--ink);border-radius:1.5px}
+
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+.screen::-webkit-scrollbar{display:none}
+.pad{padding:0 22px}
+
+/* ---------- typography ---------- */
+.eyebrow{font-size:11px;font-weight:640;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.display{font-size:29px;line-height:1.14;letter-spacing:-.028em;font-weight:660;margin-top:9px}
+.sub{font-size:15px;color:var(--ink-2);margin-top:9px;line-height:1.5}
+.sec-head{display:flex;align-items:center;justify-content:space-between;margin:30px 0 4px}
+.sec-head .eyebrow{color:var(--ink-2)}
+.count{font-size:11px;font-weight:640;color:var(--ink-3);letter-spacing:.04em}
+
+/* ---------- capacity strip ---------- */
+.cap{margin-top:22px;padding:16px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface-2)}
+.cap-row{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--ink-2)}
+.cap-row b{font-size:15px;color:var(--ink);font-weight:640;letter-spacing:-.01em}
+.bar{height:6px;border-radius:99px;background:#E6E7EC;margin:12px 0 10px;position:relative;overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--ink);border-radius:99px}
+.bar u{position:absolute;top:0;bottom:0;background:var(--amber)}
+.bar s{position:absolute;top:-3px;bottom:-3px;width:1.5px;background:#fff;box-shadow:0 0 0 1px rgba(16,18,25,.25)}
+.cap-note{font-size:12.5px;color:var(--ink-3);line-height:1.45}
+
+/* ---------- commitment row ---------- */
+.item{padding:20px 0;border-bottom:1px solid var(--line-2)}
+.item:last-child{border-bottom:0}
+.item-top{display:flex;gap:12px;align-items:flex-start}
+.item-title{font-size:16px;font-weight:585;letter-spacing:-.015em;line-height:1.35;flex:1}
+.meta{font-size:12.5px;color:var(--ink-3);margin-top:6px;display:flex;align-items:center;gap:6px}
+.dot{width:3px;height:3px;border-radius:99px;background:var(--ink-3);flex:0 0 3px}
+.pill{font-size:11px;font-weight:640;letter-spacing:.01em;padding:4px 9px;border-radius:99px;white-space:nowrap;flex:0 0 auto}
+.pill.risk{color:var(--amber);background:var(--amber-bg)}
+.pill.over{color:var(--red);background:var(--red-bg)}
+.pill.ok{color:var(--green);background:var(--green-bg)}
+
+/* ---------- assistant block (violet = the assistant did work) ---------- */
+.assist{margin-top:14px;background:var(--violet-bg);border:1px solid var(--violet-line);
+  border-radius:var(--r-md);padding:13px 14px}
+.assist-h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:650;
+  color:var(--violet-ink);letter-spacing:.005em}
+.assist-b{font-size:13.5px;color:#3B3A5C;line-height:1.5;margin-top:8px}
+.assist-acts{display:flex;align-items:center;gap:14px;margin-top:13px}
+.btn-v{background:var(--violet);color:#fff;border:0;border-radius:99px;padding:7px 15px;
+  font-size:12.5px;font-weight:600;font-family:var(--sans);cursor:pointer;letter-spacing:-.005em}
+.btn-t{background:0;border:0;color:var(--violet-ink);font-size:12.5px;font-weight:580;
+  font-family:var(--sans);cursor:pointer;opacity:.72}
+
+/* ---------- on-track collapsed ---------- */
+.ontrack{margin-top:14px;border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+.ot-row{display:flex;align-items:center;gap:11px;padding:13px 15px;border-bottom:1px solid var(--line-2);font-size:14px}
+.ot-row:last-child{border-bottom:0}
+.ot-row span{flex:1;letter-spacing:-.01em}
+.ot-row em{font-style:normal;font-size:12px;color:var(--ink-3)}
+.tick{width:15px;height:15px;border-radius:99px;background:var(--green-bg);flex:0 0 15px;
+  display:flex;align-items:center;justify-content:center}
+
+/* ---------- tab bar + mic ---------- */
+.tabbar{flex:0 0 78px;border-top:1px solid var(--line);display:flex;background:rgba(255,255,255,.94);
+  backdrop-filter:blur(12px);padding-bottom:14px}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  font-size:10.5px;font-weight:590;color:var(--ink-3);letter-spacing:.01em;cursor:pointer}
+.tab.on{color:var(--violet)}
+.tab svg{width:20px;height:20px}
+.mic{position:absolute;right:20px;bottom:96px;width:54px;height:54px;border-radius:99px;
+  background:var(--violet);display:flex;align-items:center;justify-content:center;
+  box-shadow:0 8px 22px rgba(91,79,233,.34),0 2px 6px rgba(91,79,233,.2);cursor:pointer}
+.mic svg{width:21px;height:21px}
+.mic-hint{position:absolute;right:20px;bottom:80px;width:54px;text-align:center;
+  font-size:9.5px;color:var(--ink-3);letter-spacing:.02em}
+
+/* ---------- detail screen ---------- */
+.navbar{flex:0 0 50px;display:flex;align-items:center;gap:4px;padding:0 14px;border-bottom:1px solid var(--line-2)}
+.navbar button{background:0;border:0;display:flex;align-items:center;gap:3px;color:var(--violet);
+  font-family:var(--sans);font-size:15px;font-weight:520;cursor:pointer}
+.who{display:flex;align-items:center;gap:9px;margin-top:14px}
+.av{width:26px;height:26px;border-radius:99px;background:#DDD9FB;color:var(--violet-ink);
+  font-size:11px;font-weight:660;display:flex;align-items:center;justify-content:center}
+.who-n{font-size:13.5px;color:var(--ink-2)}
+.block{margin-top:26px}
+.quote{margin-top:11px;background:var(--surface-2);border-left:2.5px solid var(--violet);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;padding:14px 15px;font-size:14px;line-height:1.55;color:#2A2C36}
+.src{display:flex;align-items:center;justify-content:space-between;margin-top:10px;font-size:12px;color:var(--ink-3)}
+.src a{color:var(--violet-ink);text-decoration:none;font-weight:580}
+.reasons{margin-top:12px}
+.reason{display:flex;gap:11px;padding:10px 0;border-bottom:1px solid var(--line-2);font-size:14px;line-height:1.45}
+.reason:last-child{border-bottom:0}
+.reason i{flex:0 0 5px;height:5px;border-radius:99px;background:var(--amber);margin-top:7px}
+.reason em{font-style:normal;color:var(--ink-3);font-size:12.5px;display:block;margin-top:3px}
+.draft{margin-top:11px;background:var(--violet-bg);border:1px solid var(--violet-line);
+  border-radius:var(--r-md);padding:15px}
+.draft-h{font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--violet-ink);opacity:.8}
+.draft-b{font-size:13.5px;line-height:1.6;color:#3B3A5C;margin-top:9px}
+.cta{margin-top:16px;display:flex;flex-direction:column;gap:9px;padding-bottom:26px}
+.cta button{width:100%;border-radius:11px;padding:14px;font-size:15px;font-weight:600;
+  font-family:var(--sans);cursor:pointer;letter-spacing:-.01em}
+.cta .p{background:var(--violet);color:#fff;border:0}
+.cta .s{background:#fff;color:var(--violet-ink);border:1px solid var(--violet-line)}
+
+/* ---------- commitments tab ---------- */
+.search{margin-top:16px;display:flex;align-items:center;gap:9px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink-3);font-size:14px}
+.segs{display:flex;gap:6px;margin-top:14px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.segs::-webkit-scrollbar{display:none}
+.seg{font-size:12.5px;font-weight:580;padding:7px 13px;border-radius:99px;border:1px solid var(--line);
+  color:var(--ink-2);white-space:nowrap;cursor:pointer;background:#fff}
+.seg.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.grp{margin-top:26px}
+.grp-h{display:flex;align-items:baseline;justify-content:space-between;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.crow{display:flex;align-items:center;gap:12px;padding:15px 0;border-bottom:1px solid var(--line-2)}
+.cdot{width:7px;height:7px;border-radius:99px;flex:0 0 7px}
+.crow .t{flex:1}
+.crow .t b{display:block;font-size:14.5px;font-weight:560;letter-spacing:-.012em;line-height:1.35}
+.crow .t em{font-style:normal;font-size:12px;color:var(--ink-3);display:block;margin-top:4px}
+.crow .r{font-size:12px;color:var(--ink-3);text-align:right;white-space:nowrap}
+.chev{color:#C8CBD4;flex:0 0 auto}
+
+/* ---------- voice sheet ---------- */
+.scrim{position:absolute;inset:0;background:rgba(16,18,25,.38);backdrop-filter:blur(2px)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:26px 26px 0 0;
+  padding:12px 22px 30px;box-shadow:0 -10px 40px rgba(16,18,25,.16);height:600px;display:flex;flex-direction:column}
+.grab{width:36px;height:4px;border-radius:99px;background:#DEDFE5;margin:0 auto 22px}
+.orb{width:76px;height:76px;border-radius:99px;margin:6px auto 0;position:relative;flex:0 0 auto}
+.orb i{position:absolute;inset:0;border-radius:99px;background:var(--violet);opacity:.1}
+.orb u{position:absolute;inset:14px;border-radius:99px;background:var(--violet);opacity:.18}
+.orb s{position:absolute;inset:27px;border-radius:99px;background:var(--violet)}
+.listening{text-align:center;font-size:11px;font-weight:640;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--violet);margin-top:14px}
+.transcript{font-size:21px;line-height:1.38;letter-spacing:-.022em;font-weight:540;margin-top:22px}
+.transcript span{color:var(--ink-3)}
+.reply{margin-top:26px;padding-top:22px;border-top:1px solid var(--line-2)}
+.reply p{font-size:15px;line-height:1.55;color:var(--ink-2)}
+.confirms{margin-top:16px;display:flex;flex-direction:column;gap:2px}
+.cfm{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line-2);font-size:14px}
+.cfm:last-child{border-bottom:0}
+.cfm .k{width:18px;height:18px;border-radius:99px;background:var(--violet);flex:0 0 18px;
+  display:flex;align-items:center;justify-content:center}
+.cfm span{flex:1;letter-spacing:-.01em}
+.cfm em{font-style:normal;font-size:12px;color:var(--ink-3)}
+.mic-live{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:9px}
+.mic-lg{width:64px;height:64px;border-radius:99px;background:var(--violet);display:flex;
+  align-items:center;justify-content:center;box-shadow:0 0 0 7px rgba(91,79,233,.11)}
+.mic-lg svg{width:24px;height:24px}
+.mic-cap{font-size:12px;color:var(--ink-3)}
+
+/* ---------- ledger ---------- */
+.tl{margin-top:22px;position:relative;padding-left:22px}
+.tl::before{content:"";position:absolute;left:3.5px;top:6px;bottom:14px;width:1px;background:var(--line)}
+.ent{position:relative;padding:0 0 22px}
+.ent::before{content:"";position:absolute;left:-22px;top:5px;width:8px;height:8px;border-radius:99px;
+  background:#fff;border:2px solid var(--violet)}
+.ent.done::before{border-color:var(--green)}
+.ent-t{font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.ent-a{font-size:14.5px;font-weight:545;letter-spacing:-.012em;margin-top:4px;line-height:1.4}
+.ent-m{display:flex;align-items:center;justify-content:space-between;margin-top:5px}
+.ent-m em{font-style:normal;font-size:12px;color:var(--ink-3)}
+.undo{font-size:12px;font-weight:600;color:var(--violet-ink);opacity:.85;cursor:pointer}
+.daybreak{font-size:11px;font-weight:640;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);
+  margin:8px 0 18px;padding-top:20px;border-top:1px solid var(--line)}
+.allclear{margin-top:26px;padding:20px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface-2)}
+.allclear .n{font-size:13px;color:var(--ink-2);line-height:1.55}
+
+/* ---------- onboarding ---------- */
+.ob{flex:1;display:flex;flex-direction:column;padding:0 26px;overflow-y:auto;scrollbar-width:none}
+.ob::-webkit-scrollbar{display:none}
+.brand{display:flex;align-items:center;gap:9px;margin-top:34px}
+.brand i{width:22px;height:22px;border-radius:6px;background:var(--violet);display:block;position:relative}
+.brand i::after{content:"";position:absolute;left:5px;right:5px;top:6px;height:2px;background:#fff;border-radius:2px;
+  box-shadow:0 5px 0 rgba(255,255,255,.55)}
+.brand b{font-size:16px;font-weight:660;letter-spacing:-.024em}
+.ob-h{font-size:28px;line-height:1.16;letter-spacing:-.03em;font-weight:660;margin-top:auto}
+.ob-sub{font-size:15px;color:var(--ink-2);line-height:1.52;margin-top:12px}
+.prov{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;border:1px solid var(--line);
+  background:#fff;border-radius:12px;padding:14px;font-size:15px;font-weight:590;font-family:var(--sans);
+  color:var(--ink);cursor:pointer;letter-spacing:-.012em;margin-top:10px}
+.prov.primary{background:var(--violet);color:#fff;border-color:var(--violet)}
+.prov u{width:18px;height:18px;border-radius:5px;display:block;font-size:10px;font-weight:700;
+  text-decoration:none;display:flex;align-items:center;justify-content:center;color:#fff}
+.orline{display:flex;align-items:center;gap:12px;margin:18px 0 8px;color:var(--ink-3);font-size:12px}
+.orline::before,.orline::after{content:"";flex:1;height:1px;background:var(--line)}
+.legal{font-size:11.5px;color:var(--ink-3);line-height:1.5;margin:20px 0 30px;text-align:center}
+.legal a{color:var(--ink-2)}
+.steps{display:flex;gap:5px;margin-top:30px}
+.steps i{height:3px;border-radius:99px;background:var(--line);flex:1}
+.steps i.on{background:var(--violet)}
+
+.srow{display:flex;align-items:center;gap:13px;padding:16px 0;border-bottom:1px solid var(--line-2)}
+.srow-i{width:34px;height:34px;border-radius:9px;flex:0 0 34px;display:flex;align-items:center;
+  justify-content:center;font-size:12px;font-weight:700;color:#fff;letter-spacing:-.02em}
+.srow-t{flex:1}
+.srow-t b{display:block;font-size:14.5px;font-weight:585;letter-spacing:-.014em}
+.srow-t em{font-style:normal;display:block;font-size:12.5px;color:var(--ink-3);margin-top:3px;line-height:1.4}
+.srow-b{border:1px solid var(--violet-line);background:var(--violet-bg);color:var(--violet-ink);
+  border-radius:99px;padding:7px 14px;font-size:12.5px;font-weight:620;font-family:var(--sans);cursor:pointer}
+.srow-ok{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:var(--green)}
+.opt{font-size:10.5px;font-weight:640;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.ob-foot{margin-top:auto;padding:16px 0 30px}
+.ob-foot .big{width:100%;background:var(--violet);color:#fff;border:0;border-radius:13px;padding:15px;
+  font-size:15.5px;font-weight:620;font-family:var(--sans);cursor:pointer;letter-spacing:-.014em}
+.ob-foot .skip{width:100%;background:0;border:0;color:var(--ink-3);font-size:13px;font-family:var(--sans);
+  padding:14px 0 0;cursor:pointer}
+.ob-note{font-size:12.5px;color:var(--ink-3);text-align:center;line-height:1.5;margin-top:12px}
+
+.bf-num{font-size:58px;line-height:1;letter-spacing:-.045em;font-weight:680;
+  font-variant-numeric:tabular-nums;margin-top:26px}
+.bf-lab{font-size:14px;color:var(--ink-2);margin-top:9px}
+.bf-list{margin-top:30px;border-top:1px solid var(--line)}
+.bf-row{display:flex;align-items:center;gap:11px;padding:14px 0;border-bottom:1px solid var(--line-2);font-size:14px}
+.bf-row span{flex:1;letter-spacing:-.01em}
+.bf-row em{font-style:normal;font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.spin{width:15px;height:15px;border-radius:99px;border:2px solid var(--violet-line);
+  border-top-color:var(--violet);flex:0 0 15px}
+.pend{width:15px;height:15px;border-radius:99px;border:2px dashed #D9DBE2;flex:0 0 15px}
+
+.cf-prog{display:flex;align-items:center;justify-content:space-between;margin-top:26px;font-size:12.5px;color:var(--ink-3)}
+.cf-bar{height:3px;background:var(--line);border-radius:99px;margin-top:9px;overflow:hidden}
+.cf-bar i{display:block;height:100%;background:var(--violet);border-radius:99px}
+.cf-card{margin-top:26px;border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;background:#fff;
+  box-shadow:0 2px 10px rgba(16,18,25,.04)}
+.cf-q{font-size:13.5px;line-height:1.6;color:#2A2C36;background:var(--surface-2);
+  border-left:2.5px solid var(--violet);border-radius:0 var(--r-sm) var(--r-sm) 0;padding:13px 14px}
+.cf-src{font-size:12px;color:var(--ink-3);margin-top:9px}
+.cf-parsed{margin-top:18px;padding-top:16px;border-top:1px solid var(--line-2)}
+.cf-parsed .eyebrow{margin-bottom:9px;display:block}
+.cf-parsed b{font-size:17px;font-weight:600;letter-spacing:-.02em;line-height:1.3;display:block}
+.cf-chips{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
+.chip{font-size:11.5px;font-weight:580;color:var(--ink-2);background:var(--surface-2);
+  border:1px solid var(--line);border-radius:99px;padding:5px 10px}
+.cf-acts{margin-top:20px;display:flex;flex-direction:column;gap:8px}
+.cf-acts button{width:100%;border-radius:12px;padding:13px;font-size:14.5px;font-weight:600;
+  font-family:var(--sans);cursor:pointer;letter-spacing:-.012em}
+.cf-acts .y{background:var(--violet);color:#fff;border:0}
+.cf-acts .r{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.cf-row2{display:flex;gap:8px}
+.cf-row2 button{flex:1}
+
+/* ---------- account ---------- */
+.acct-head{display:flex;align-items:center;gap:14px;margin-top:20px;padding-bottom:24px;border-bottom:1px solid var(--line)}
+.av-lg{width:52px;height:52px;border-radius:99px;background:#DDD9FB;color:var(--violet-ink);
+  font-size:18px;font-weight:660;display:flex;align-items:center;justify-content:center;flex:0 0 52px;letter-spacing:-.02em}
+.acct-head .n b{display:block;font-size:18px;font-weight:640;letter-spacing:-.022em}
+.acct-head .n em{font-style:normal;display:block;font-size:13px;color:var(--ink-3);margin-top:3px}
+.gtitle{font-size:11px;font-weight:640;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin:28px 0 10px}
+.card{border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;background:#fff}
+.arow{display:flex;align-items:center;gap:12px;padding:14px 15px;border-bottom:1px solid var(--line-2)}
+.arow:last-child{border-bottom:0}
+.arow .t{flex:1}
+.arow .t b{display:block;font-size:14.5px;font-weight:555;letter-spacing:-.014em}
+.arow .t em{font-style:normal;display:block;font-size:12px;color:var(--ink-3);margin-top:3px;line-height:1.42}
+.arow .v{font-size:13.5px;color:var(--ink-3);white-space:nowrap}
+.tog{width:44px;height:26px;border-radius:99px;background:#DDDFE6;flex:0 0 44px;position:relative;cursor:pointer}
+.tog::after{content:"";position:absolute;top:2.5px;left:2.5px;width:21px;height:21px;border-radius:99px;
+  background:#fff;box-shadow:0 1px 3px rgba(16,18,25,.2)}
+.tog.on{background:var(--violet)}
+.tog.on::after{left:20.5px}
+.tier{display:flex;align-items:center;gap:8px;margin:0 0 9px}
+.tier b{font-size:12px;font-weight:640;letter-spacing:-.005em}
+.tier em{font-style:normal;font-size:11px;color:var(--ink-3)}
+.locked{background:var(--surface-2)}
+.lockpill{font-size:10.5px;font-weight:640;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-3);border:1px solid var(--line);border-radius:99px;padding:4px 9px;white-space:nowrap}
+.guard{margin-top:11px;background:var(--violet-bg);border:1px solid var(--violet-line);border-radius:var(--r-md);
+  padding:13px 14px;font-size:12.5px;color:#3B3A5C;line-height:1.5}
+.guard b{font-weight:650;color:var(--violet-ink)}
+.danger{color:var(--red)!important}
+.warnpill{font-size:11px;font-weight:620;color:var(--amber);background:var(--amber-bg);
+  border-radius:99px;padding:4px 9px;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="deck">
+
+  <div class="deck-head">
+    <h1>Headroom — screen prototype</h1>
+    <p>Three destinations: Brief, Commitments, Ledger. Voice is an overlay, not a tab. Commitment
+       detail is a push. Light mode, white / near-black, single indigo accent.</p>
+    <div class="swatches">
+      <div class="sw"><i style="background:#FFFFFF;border:1px solid #E9EAEF"></i>#FFFFFF</div>
+      <div class="sw"><i style="background:#101219"></i>#101219 ink</div>
+      <div class="sw"><i style="background:#5B4FE9"></i>#5B4FE9 indigo</div>
+      <div class="sw"><i style="background:#15825A"></i>on track</div>
+      <div class="sw"><i style="background:#A96605"></i>at risk</div>
+      <div class="sw"><i style="background:#C33B31"></i>overdue</div>
+    </div>
+    <div class="legend">
+      <div><b>Indigo</b> = the assistant did work here</div>
+      <div><b>Green / amber / red</b> = state of the world, never brand</div>
+      <div><b>Numbers</b> tabular, tight tracking</div>
+    </div>
+  </div>
+
+  <div class="frames">
+
+  <!-- ============ 1. BRIEF — ACTIVE ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">1 · Brief <span>home, active day</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="screen pad">
+        <div style="padding-top:10px">
+          <div class="eyebrow">Tuesday, 11 August</div>
+          <div class="display">3 promises<br>need you today.</div>
+          <div class="sub">4 reviews waiting. Third short night in a row.</div>
+        </div>
+
+        <div class="cap">
+          <div class="cap-row"><span>Committed load, this week</span>
+            <span><b>34h</b> promised · 26h free</span></div>
+          <div class="bar"><i style="width:76%"></i><u style="left:76%;right:0"></u><s style="left:76%"></s></div>
+          <div class="cap-note">8h over. Thursday is the pinch — 6h 15m of meetings already.</div>
+        </div>
+
+        <div class="sec-head"><div class="eyebrow">Needs you</div><div class="count">3</div></div>
+
+        <div class="item">
+          <div class="item-top">
+            <div class="item-title">The migration ships Thursday</div>
+            <div class="pill risk">At risk</div>
+          </div>
+          <div class="meta">Maya Rodriguez <i class="dot"></i> Email, 6 Aug</div>
+          <div class="assist">
+            <div class="assist-h">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2l1.6 5.2L19 9l-5.4 1.8L12 16l-1.6-5.2L5 9l5.4-1.8z"/></svg>
+              Reply drafted
+            </div>
+            <div class="assist-b">“Thursday's tight on my side — Monday work instead? The migration
+              is blocked on #412, still unreviewed.”</div>
+            <div class="assist-acts">
+              <button class="btn-v">Approve &amp; send</button>
+              <button class="btn-t">Edit</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="item-top">
+            <div class="item-title">4 review requests, oldest 6 days</div>
+            <div class="pill over">Overdue</div>
+          </div>
+          <div class="meta">orbit/api <i class="dot"></i> GitHub</div>
+          <div class="assist">
+            <div class="assist-h">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2l1.6 5.2L19 9l-5.4 1.8L12 16l-1.6-5.2L5 9l5.4-1.8z"/></svg>
+              2 approved, 1 drafted, 1 left for you
+            </div>
+            <div class="assist-b">Both dependency bumps reviewed and approved. #412 touches the auth
+              path — left untouched.</div>
+            <div class="assist-acts">
+              <button class="btn-v">Review #412</button>
+              <button class="btn-t">See all 4</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="item-top">
+            <div class="item-title">Send Dave the deck by Friday</div>
+            <div class="pill risk">At risk</div>
+          </div>
+          <div class="meta">Voice note, 10 Aug <i class="dot"></i> no draft exists yet</div>
+          <div class="assist">
+            <div class="assist-h">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2l1.6 5.2L19 9l-5.4 1.8L12 16l-1.6-5.2L5 9l5.4-1.8z"/></svg>
+              Held Thursday, 2–4pm
+            </div>
+            <div class="assist-b">Only two-hour block left before Friday. Calendar hold placed.</div>
+            <div class="assist-acts">
+              <button class="btn-v">Keep hold</button>
+              <button class="btn-t">Find another time</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec-head"><div class="eyebrow">On track</div><div class="count">12</div></div>
+        <div class="ontrack">
+          <div class="ot-row"><div class="tick">
+            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="#15825A" stroke-width="3.4"
+                 stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg></div>
+            <span>Q3 numbers to Priya</span><em>Fri</em></div>
+          <div class="ot-row"><div class="tick">
+            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="#15825A" stroke-width="3.4"
+                 stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg></div>
+            <span>Sign the vendor renewal</span><em>18 Aug</em></div>
+          <div class="ot-row"><div class="tick">
+            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="#15825A" stroke-width="3.4"
+                 stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg></div>
+            <span>Intro Sam to the design team</span><em>next week</em></div>
+          <div class="ot-row" style="color:var(--violet);font-weight:580;font-size:13px">
+            <span style="flex:1">Show 9 more</span></div>
+        </div>
+        <div style="height:120px"></div>
+      </div>
+
+      <div class="mic-hint">Hold</div>
+      <div class="mic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
+          <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0"/><path d="M12 17.5V21"/></svg>
+      </div>
+
+      <div class="tabbar">
+        <div class="tab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M4 6h16M4 12h11M4 18h7"/></svg>Brief</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M9 11l2.5 2.5L16 8"/><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/></svg>Commitments</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M12 7v5l3.5 2"/><circle cx="12" cy="12" r="8.5"/></svg>Ledger</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 2. BRIEF — ALL CLEAR ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">2 · Brief <span>all clear — the common day</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="screen pad">
+        <div style="padding-top:10px">
+          <div class="eyebrow">Thursday, 14 August</div>
+          <div class="display">Nothing at risk.</div>
+          <div class="sub">15 commitments on track. Slept 7h 25m. Your week has room.</div>
+        </div>
+
+        <div class="cap">
+          <div class="cap-row"><span>Committed load, this week</span>
+            <span><b>19h</b> promised · 26h free</span></div>
+          <div class="bar"><i style="width:73%"></i><s style="left:100%"></s></div>
+          <div class="cap-note">7h of slack. Friday afternoon is completely open.</div>
+        </div>
+
+        <div class="sec-head"><div class="eyebrow">Handled while you slept</div><div class="count">6</div></div>
+        <div class="allclear">
+          <div class="n">Approved 3 dependency PRs, labelled 6 issues, archived 41 emails,
+            and moved your 1:1 with Priya to make room for the deck block.</div>
+          <div class="assist-acts" style="margin-top:14px">
+            <button class="btn-v">Open ledger</button>
+          </div>
+        </div>
+
+        <div class="sec-head"><div class="eyebrow">Next up</div><div class="count">3</div></div>
+        <div class="ontrack">
+          <div class="ot-row"><div class="tick">
+            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="#15825A" stroke-width="3.4"
+                 stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg></div>
+            <span>Deck to Dave</span><em>tomorrow</em></div>
+          <div class="ot-row"><div class="tick">
+            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="#15825A" stroke-width="3.4"
+                 stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg></div>
+            <span>Migration ships — Maya</span><em>Mon</em></div>
+          <div class="ot-row"><div class="tick">
+            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="#15825A" stroke-width="3.4"
+                 stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg></div>
+            <span>Q3 numbers to Priya</span><em>Fri</em></div>
+        </div>
+        <div style="height:140px"></div>
+      </div>
+
+      <div class="mic-hint">Hold</div>
+      <div class="mic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
+          <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0"/><path d="M12 17.5V21"/></svg>
+      </div>
+
+      <div class="tabbar">
+        <div class="tab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M4 6h16M4 12h11M4 18h7"/></svg>Brief</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M9 11l2.5 2.5L16 8"/><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/></svg>Commitments</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M12 7v5l3.5 2"/><circle cx="12" cy="12" r="8.5"/></svg>Ledger</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 3. COMMITMENTS ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">3 · Commitments <span>everything you owe</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="screen pad">
+        <div style="padding-top:10px">
+          <div class="eyebrow">Commitments</div>
+          <div class="display">18 open.</div>
+          <div class="sub">3 need you. 12 on track. 3 waiting on someone else.</div>
+        </div>
+
+        <div class="search">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+          Search people, promises, sources
+        </div>
+
+        <div class="segs">
+          <div class="seg on">All</div><div class="seg">Needs you</div>
+          <div class="seg">Waiting on others</div><div class="seg">Done</div>
+        </div>
+
+        <div class="grp">
+          <div class="grp-h"><div class="eyebrow" style="color:var(--red)">Overdue</div><div class="count">1</div></div>
+          <div class="crow"><div class="cdot" style="background:var(--red)"></div>
+            <div class="t"><b>Review PR #412</b><em>orbit/api · 6 days</em></div>
+            <div class="r">5 Aug</div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+        </div>
+
+        <div class="grp">
+          <div class="grp-h"><div class="eyebrow">This week</div><div class="count">5</div></div>
+          <div class="crow"><div class="cdot" style="background:var(--amber)"></div>
+            <div class="t"><b>Migration ships</b><em>Maya · Email, 6 Aug</em></div>
+            <div class="r">Thu</div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+          <div class="crow"><div class="cdot" style="background:var(--amber)"></div>
+            <div class="t"><b>Deck to Dave</b><em>Voice note, 10 Aug</em></div>
+            <div class="r">Fri</div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+          <div class="crow"><div class="cdot" style="background:var(--green)"></div>
+            <div class="t"><b>Q3 numbers to Priya</b><em>Slack, 8 Aug</em></div>
+            <div class="r">Fri</div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+          <div class="crow"><div class="cdot" style="background:#C8CBD4"></div>
+            <div class="t"><b>Waiting: Sam's availability</b><em>you asked 3 Aug · no reply</em></div>
+            <div class="r">—</div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+        </div>
+
+        <div class="grp">
+          <div class="grp-h"><div class="eyebrow">Later</div><div class="count">12</div></div>
+          <div class="crow"><div class="cdot" style="background:var(--green)"></div>
+            <div class="t"><b>Sign vendor renewal</b><em>Email, 1 Aug</em></div>
+            <div class="r">18 Aug</div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+          <div class="crow"><div class="cdot" style="background:var(--green)"></div>
+            <div class="t"><b>Intro Sam to design</b><em>Voice note, 7 Aug</em></div>
+            <div class="r">next wk</div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+        </div>
+        <div style="height:120px"></div>
+      </div>
+
+      <div class="mic-hint">Hold</div>
+      <div class="mic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
+          <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0"/><path d="M12 17.5V21"/></svg>
+      </div>
+
+      <div class="tabbar">
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M4 6h16M4 12h11M4 18h7"/></svg>Brief</div>
+        <div class="tab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M9 11l2.5 2.5L16 8"/><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/></svg>Commitments</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M12 7v5l3.5 2"/><circle cx="12" cy="12" r="8.5"/></svg>Ledger</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 4. COMMITMENT DETAIL ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">4 · Commitment detail <span>where provenance lives</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="navbar">
+        <button>
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
+            stroke-width="2.3" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>Brief</button>
+      </div>
+
+      <div class="screen pad">
+        <div style="padding-top:20px">
+          <div class="pill risk" style="display:inline-block">At risk</div>
+          <div class="display" style="font-size:26px">The migration<br>ships Thursday</div>
+          <div class="who"><div class="av">MR</div><div class="who-n">You promised Maya Rodriguez</div></div>
+        </div>
+
+        <div class="block">
+          <div class="eyebrow">Evidence</div>
+          <div class="quote">“…yeah let's target Thursday for the migration, I'll let the team know.”</div>
+          <div class="src"><span>Your email to Maya · 6 Aug, 9:14 AM</span><a href="#">Open in Gmail</a></div>
+        </div>
+
+        <div class="block">
+          <div class="eyebrow">Why it's at risk</div>
+          <div class="reasons">
+            <div class="reason"><i></i><div>Blocked by PR #412, unreviewed 6 days
+              <em>orbit/api · you are the requested reviewer</em></div></div>
+            <div class="reason"><i></i><div>Thursday has 6h 15m of meetings
+              <em>leaves 1h 45m of working time</em></div></div>
+            <div class="reason"><i></i><div>Sleep averaged 5h 40m over 3 nights
+              <em>capacity down 14% vs your baseline</em></div></div>
+          </div>
+        </div>
+
+        <div class="block">
+          <div class="eyebrow">Prepared action</div>
+          <div class="draft">
+            <div class="draft-h">Draft · not sent</div>
+            <div class="draft-b">Hi Maya — Thursday's looking tight on my side. The migration is
+              gated on #412 which is still in review, and Thursday's mostly meetings. Monday is
+              realistic and safe. Want me to lock that in?</div>
+          </div>
+          <div class="cta">
+            <button class="p">Send draft</button>
+            <button class="s">Edit first</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 5. VOICE SHEET ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">5 · Voice <span>overlay, push-to-talk</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="screen pad" style="filter:blur(.6px)">
+        <div style="padding-top:10px">
+          <div class="eyebrow">Tuesday, 11 August</div>
+          <div class="display">3 promises<br>need you today.</div>
+          <div class="sub">4 reviews waiting. Third short night in a row.</div>
+        </div>
+        <div class="cap">
+          <div class="cap-row"><span>Committed load, this week</span>
+            <span><b>34h</b> promised · 26h free</span></div>
+          <div class="bar"><i style="width:76%"></i><u style="left:76%;right:0"></u><s style="left:76%"></s></div>
+        </div>
+      </div>
+
+      <div class="scrim"></div>
+
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="orb"><i></i><u></u><s></s></div>
+        <div class="listening">Listening</div>
+
+        <div class="transcript">Push Maya to Monday, and I told Dave on the phone I'd send the deck
+          Friday<span>…</span></div>
+
+        <div class="reply">
+          <p>Moved. Monday gives you the two days you need after #412 clears — and I've logged Dave's
+             deck against Friday.</p>
+          <div class="confirms">
+            <div class="cfm"><div class="k">
+              <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="#fff" stroke-width="3.6"
+                stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg></div>
+              <span>Maya moved to Monday</span><em>draft in Gmail</em></div>
+            <div class="cfm"><div class="k">
+              <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="#fff" stroke-width="3.6"
+                stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg></div>
+              <span>New commitment: deck to Dave</span><em>Fri</em></div>
+          </div>
+        </div>
+
+        <div class="mic-live">
+          <div class="mic-lg">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
+              <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0"/><path d="M12 17.5V21"/></svg>
+          </div>
+          <div class="mic-cap">Release to send</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 6. LEDGER ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">6 · Ledger <span>what it did without asking</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="screen pad">
+        <div style="padding-top:10px">
+          <div class="eyebrow">Ledger</div>
+          <div class="display">11 actions<br>today.</div>
+          <div class="sub">All reversible. Nothing left this device without you approving it.</div>
+        </div>
+
+        <div class="tl">
+          <div class="ent"><div class="ent-t">07:02</div>
+            <div class="ent-a">Drafted a reply to Maya</div>
+            <div class="ent-m"><em>Saved to Gmail Drafts · not sent</em><div class="undo">Undo</div></div></div>
+
+          <div class="ent"><div class="ent-t">07:02</div>
+            <div class="ent-a">Held Thursday 2–4pm for the deck</div>
+            <div class="ent-m"><em>Google Calendar</em><div class="undo">Undo</div></div></div>
+
+          <div class="ent done"><div class="ent-t">07:03</div>
+            <div class="ent-a">Approved 2 dependency PRs</div>
+            <div class="ent-m"><em>orbit/api · #418, #419</em><div class="undo">Undo</div></div></div>
+
+          <div class="ent"><div class="ent-t">07:03</div>
+            <div class="ent-a">Labelled 6 issues, assigned 2 to you</div>
+            <div class="ent-m"><em>orbit/api</em><div class="undo">Undo</div></div></div>
+
+          <div class="ent"><div class="ent-t">07:04</div>
+            <div class="ent-a">Archived 41 newsletters</div>
+            <div class="ent-m"><em>Gmail</em><div class="undo">Undo</div></div></div>
+
+          <div class="ent done"><div class="ent-t">08:41</div>
+            <div class="ent-a">Logged a commitment from your voice note</div>
+            <div class="ent-m"><em>Deck to Dave, Friday</em><div class="undo">Undo</div></div></div>
+
+          <div class="daybreak">Yesterday</div>
+
+          <div class="ent"><div class="ent-t">18:20</div>
+            <div class="ent-a">Declined “Growth sync” on your behalf</div>
+            <div class="ent-m"><em>rule: no meetings after 6pm</em><div class="undo">Undo</div></div></div>
+
+          <div class="ent done"><div class="ent-t">07:01</div>
+            <div class="ent-a">Bumped 3 stale review requests</div>
+            <div class="ent-m"><em>GitHub · polite nudge sent</em><div class="undo">Undo</div></div></div>
+        </div>
+        <div style="height:110px"></div>
+      </div>
+
+      <div class="tabbar">
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M4 6h16M4 12h11M4 18h7"/></svg>Brief</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M9 11l2.5 2.5L16 8"/><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/></svg>Commitments</div>
+        <div class="tab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M12 7v5l3.5 2"/><circle cx="12" cy="12" r="8.5"/></svg>Ledger</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 7. SIGN UP ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">7 · Sign up <span>first launch</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="ob">
+        <div class="brand"><i></i><b>Headroom</b></div>
+
+        <div class="ob-h">Nothing you<br>promised falls<br>through.</div>
+        <div class="ob-sub">Headroom reads your email, calendar, and code, finds every commitment
+          you've made, and tells you what's actually at risk — with the work already drafted.</div>
+
+        <div style="margin-top:34px">
+          <button class="prov primary"><u style="background:rgba(255,255,255,.22)">G</u>Continue with Google</button>
+          <button class="prov"><u style="background:#181717">GH</u>Continue with GitHub</button>
+          <div class="orline">or</div>
+          <button class="prov">Continue with email</button>
+        </div>
+
+        <div class="legal">Google and GitHub are also two of your data sources — signing in with one
+          means one less connection later.<br><br>
+          By continuing you agree to the <a href="#">Terms</a> and <a href="#">Privacy Policy</a>.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 8. SETUP — CONNECT SOURCES ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">8 · Setup <span>connect sources</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="ob">
+        <div class="steps"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+        <div style="margin-top:26px">
+          <div class="eyebrow">Step 2 of 4</div>
+          <div class="ob-h" style="margin-top:9px;font-size:26px">Connect your<br>commitments.</div>
+          <div class="ob-sub" style="font-size:14.5px">Each source teaches Headroom something different.
+            You can add the rest later.</div>
+        </div>
+
+        <div style="margin-top:26px">
+          <div class="srow">
+            <div class="srow-i" style="background:#EA4335">M</div>
+            <div class="srow-t"><b>Gmail</b><em>Promises you made in prose</em></div>
+            <div class="srow-ok">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                stroke-width="3.2" stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg>Connected</div>
+          </div>
+
+          <div class="srow">
+            <div class="srow-i" style="background:#4285F4">C</div>
+            <div class="srow-t"><b>Google Calendar</b><em>Whether you actually have the time</em></div>
+            <div class="srow-ok">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                stroke-width="3.2" stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg>Connected</div>
+          </div>
+
+          <div class="srow">
+            <div class="srow-i" style="background:#181717">GH</div>
+            <div class="srow-t"><b>GitHub</b><em>Reviews, issues, and unanswered mentions</em></div>
+            <button class="srow-b">Connect</button>
+          </div>
+
+          <div class="srow">
+            <div class="srow-i" style="background:#00B0B9">H</div>
+            <div class="srow-t"><b>Google Health</b><em>Sleep and recovery, as capacity · Fitbit Air</em></div>
+            <button class="srow-b">Connect</button>
+          </div>
+
+          <div class="srow" style="border-bottom:0">
+            <div class="srow-i" style="background:var(--violet)">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="2"
+                stroke-linecap="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/>
+                <path d="M5.5 11a6.5 6.5 0 0013 0"/><path d="M12 17.5V21"/></svg></div>
+            <div class="srow-t"><b>Voice notes</b><em>Promises made out loud, in person or on calls</em></div>
+            <div class="opt">Built in</div>
+          </div>
+        </div>
+
+        <div class="ob-foot">
+          <button class="big">Continue with 2 sources</button>
+          <div class="ob-note">Headroom only ever reads. Nothing is sent on your behalf
+            without your approval.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 9. BACKFILL ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">9 · First run <span>backfill — the trust moment</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="ob">
+        <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+        <div style="margin-top:26px">
+          <div class="eyebrow">Step 3 of 4</div>
+          <div class="ob-h" style="margin-top:9px;font-size:26px">Reading your<br>last 90 days.</div>
+        </div>
+
+        <div class="bf-num">47</div>
+        <div class="bf-lab">commitments found so far</div>
+
+        <div class="bf-list">
+          <div class="bf-row">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--green)" stroke-width="3.2"
+              stroke-linecap="round" style="flex:0 0 15px"><path d="M4 12.5l5 5L20 6.5"/></svg>
+            <span>Calendar</span><em>412 events</em></div>
+          <div class="bf-row">
+            <div class="spin"></div>
+            <span>Gmail</span><em>3,180 of 5,240</em></div>
+          <div class="bf-row">
+            <div class="pend"></div>
+            <span>GitHub</span><em>waiting</em></div>
+          <div class="bf-row">
+            <div class="pend"></div>
+            <span>Resolving people</span><em>waiting</em></div>
+        </div>
+
+        <div class="ob-foot">
+          <div class="ob-note" style="margin:0 0 14px">This usually takes 4–6 minutes. You can close
+            the app — we'll notify you when your first brief is ready.</div>
+          <button class="big">Review what I found</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 10. CONFIRM EXTRACTION ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">10 · Confirm <span>onboarding doubles as the eval set</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="ob">
+        <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+        <div style="margin-top:26px">
+          <div class="eyebrow">Step 4 of 4</div>
+          <div class="ob-h" style="margin-top:9px;font-size:26px">Did I get<br>these right?</div>
+          <div class="ob-sub" style="font-size:14.5px">Correct me now and I'll be sharper later.
+            This is how Headroom learns what counts as a promise for you.</div>
+        </div>
+
+        <div class="cf-prog"><span>12 of 47 reviewed</span><span>9 kept · 3 rejected</span></div>
+        <div class="cf-bar"><i style="width:26%"></i></div>
+
+        <div class="cf-card">
+          <div class="cf-q">“…yeah let's target Thursday for the migration, I'll let the team know.”</div>
+          <div class="cf-src">Your email to Maya Rodriguez · 6 Aug, 9:14 AM</div>
+
+          <div class="cf-parsed">
+            <span class="eyebrow">Headroom read this as</span>
+            <b>You owe Maya the migration by Thursday</b>
+            <div class="cf-chips">
+              <div class="chip">Maya Rodriguez</div>
+              <div class="chip">due Thu 14 Aug</div>
+              <div class="chip">you owe it</div>
+            </div>
+          </div>
+
+          <div class="cf-acts">
+            <button class="y">Yes, that's a promise</button>
+            <div class="cf-row2">
+              <button class="r">Not a commitment</button>
+              <button class="r">Already done</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ob-foot">
+          <button class="skip">Skip the rest — I'll correct them as they come up</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 11. ACCOUNT ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">11 · Account <span>where autonomy is granted</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="navbar">
+        <button>
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
+            stroke-width="2.3" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>Brief</button>
+      </div>
+
+      <div class="screen pad">
+        <div class="acct-head">
+          <div class="av-lg">PK</div>
+          <div class="n"><b>Pranav Kavle</b><em>pranav.kavle@sidley.com</em></div>
+        </div>
+
+        <div class="gtitle">Sources</div>
+        <div class="card">
+          <div class="arow"><div class="srow-i" style="background:#EA4335;width:26px;height:26px;flex:0 0 26px;
+            border-radius:7px;font-size:10px">M</div>
+            <div class="t"><b>Gmail</b><em>Synced 4 minutes ago</em></div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+          <div class="arow"><div class="srow-i" style="background:#4285F4;width:26px;height:26px;flex:0 0 26px;
+            border-radius:7px;font-size:10px">C</div>
+            <div class="t"><b>Google Calendar</b><em>Synced 4 minutes ago</em></div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+          <div class="arow"><div class="srow-i" style="background:#181717;width:26px;height:26px;flex:0 0 26px;
+            border-radius:7px;font-size:10px">GH</div>
+            <div class="t"><b>GitHub</b><em>Webhooks live · 3 repos</em></div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+          <div class="arow"><div class="srow-i" style="background:#00B0B9;width:26px;height:26px;flex:0 0 26px;
+            border-radius:7px;font-size:10px">H</div>
+            <div class="t"><b>Google Health</b><em>Reconnect needed — token expired</em></div>
+            <div class="warnpill">Reconnect</div></div>
+        </div>
+
+        <div class="gtitle">What Headroom may do on its own</div>
+
+        <div class="tier"><b>Private &amp; reversible</b><em>· runs unattended</em></div>
+        <div class="card">
+          <div class="arow"><div class="t"><b>Draft replies</b><em>Saved to Drafts, never sent</em></div>
+            <div class="tog on"></div></div>
+          <div class="arow"><div class="t"><b>Hold time on your calendar</b><em>Only in free slots</em></div>
+            <div class="tog on"></div></div>
+          <div class="arow"><div class="t"><b>Triage and label email</b><em>Archive newsletters, label the rest</em></div>
+            <div class="tog on"></div></div>
+          <div class="arow"><div class="t"><b>Tidy GitHub issues</b><em>Label, assign, close stale</em></div>
+            <div class="tog on"></div></div>
+          <div class="arow"><div class="t"><b>Approve dependency PRs</b><em>Lockfile-only changes</em></div>
+            <div class="tog"></div></div>
+        </div>
+
+        <div class="tier" style="margin-top:22px"><b>Outward-facing</b><em>· always asks first</em></div>
+        <div class="card">
+          <div class="arow"><div class="t"><b>Send a drafted reply</b></div><div class="lockpill">One tap</div></div>
+          <div class="arow"><div class="t"><b>Decline or move a meeting</b></div><div class="lockpill">One tap</div></div>
+          <div class="arow"><div class="t"><b>Comment on a PR</b></div><div class="lockpill">One tap</div></div>
+        </div>
+
+        <div class="tier" style="margin-top:22px"><b>Money &amp; third parties</b><em>· never</em></div>
+        <div class="card locked">
+          <div class="arow"><div class="t"><b>Purchases, bookings, cancellations</b>
+            <em>Headroom will prepare these. It will not execute them.</em></div>
+            <div class="lockpill">Off by design</div></div>
+        </div>
+
+        <div class="guard"><b>The hard line.</b> Nothing leaves this device outward-facing without your
+          approval, and every unattended action is logged in the Ledger with an Undo.</div>
+
+        <div class="gtitle">Brief</div>
+        <div class="card">
+          <div class="arow"><div class="t"><b>Morning brief</b></div><div class="v">7:00 AM</div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+          <div class="arow"><div class="t"><b>Push notifications</b><em>Event-driven and scheduled</em></div>
+            <div class="tog on"></div></div>
+          <div class="arow"><div class="t"><b>Email digest</b><em>Backup channel, same content</em></div>
+            <div class="tog on"></div></div>
+          <div class="arow"><div class="t"><b>Standing rules</b><em>No meetings after 6pm · protect Fri PM</em></div>
+            <div class="v">2</div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+        </div>
+
+        <div class="gtitle">Voice</div>
+        <div class="card">
+          <div class="arow"><div class="t"><b>Speaking voice</b></div><div class="v">Sonic · Calm</div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+          <div class="arow"><div class="t"><b>Read the brief aloud on open</b></div><div class="tog"></div></div>
+        </div>
+
+        <div class="gtitle">Data</div>
+        <div class="card">
+          <div class="arow"><div class="t"><b>Export everything</b><em>Graph, sources, and ledger as JSON</em></div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+          <div class="arow"><div class="t"><b class="danger">Delete my graph</b>
+            <em>Sources stay connected. Extraction starts over.</em></div>
+            <svg class="chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></div>
+        </div>
+
+        <div class="card" style="margin-top:22px">
+          <div class="arow"><div class="t" style="text-align:center"><b class="danger">Sign out</b></div></div>
+        </div>
+        <div style="height:40px"></div>
+      </div>
+    </div>
+  </div>
+
+  </div>
+</div>
+</body>
+</html>
