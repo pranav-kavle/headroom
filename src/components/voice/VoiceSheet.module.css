@@ -1,0 +1,31 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 18, 25, 0.38);
+  backdrop-filter: blur(2px);
+  border: 0;
+  padding: 0;
+  z-index: 30;
+}
+
+.sheet {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  width: 100%;
+  max-width: 390px;
+  transform: translateX(-50%);
+  background: var(--hr-bg);
+  border-radius: 26px 26px 0 0;
+  padding: 12px 22px 30px;
+  box-shadow: 0 -10px 40px rgba(16, 18, 25, 0.16);
+  z-index: 31;
+}
+
+.grab {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--hr-line);
+  margin: 0 auto 12px;
+}

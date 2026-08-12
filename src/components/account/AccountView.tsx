@@ -67,7 +67,7 @@ export function AccountView({ email, sources }: { email: string; sources: Connec
 
   return (
     <>
-      <TopBar variant="back" label="Back" href="/voice" />
+      <TopBar variant="back" label="Back" href="/brief" />
       <main className={styles.screen}>
         <div className={styles.acctHead}>
           <div className={styles.avLg}>{initialsFromEmail(email)}</div>

@@ -3,15 +3,10 @@
 
 .sheet {
   width: 100%;
-  max-width: 390px;
-  background: var(--hr-bg);
-  border-radius: var(--hr-radius-lg);
-  padding: 30px 22px;
-  box-shadow: 0 10px 40px rgba(16, 18, 25, 0.16);
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-height: 480px;
+  min-height: 420px;
 }
 
 .orb {

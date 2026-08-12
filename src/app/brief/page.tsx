@@ -1,25 +1,27 @@
 import { redirect } from "next/navigation";
+import { listCommitments } from "@headroom/graph";
 import { getOrCreateUser } from "@/lib/auth";
-import { VoiceRecorder } from "@/components/voice/VoiceRecorder";
 import { AppFrame } from "@/components/nav/AppFrame";
 import { TopBar } from "@/components/nav/TopBar";
 import { BottomTabBar } from "@/components/nav/BottomTabBar";
+import { VoiceOverlay } from "@/components/voice/VoiceOverlay";
 import { initialsFromEmail } from "@/lib/initials";
-import styles from "./voice.module.css";
+import { BriefView } from "@/components/brief/BriefView";
 
-export default async function VoicePage() {
+export default async function BriefPage() {
   const user = await getOrCreateUser();
   if (!user) {
     redirect("/sign-in");
   }
 
+  const commitments = await listCommitments(user.id);
+
   return (
     <AppFrame>
       <TopBar variant="home" initials={initialsFromEmail(user.email)} accountHref="/account" />
-      <main className={styles.page}>
-        <VoiceRecorder />
-      </main>
-      <BottomTabBar />
+      <BriefView commitments={commitments} />
+      <VoiceOverlay />
+      <BottomTabBar active="brief" />
     </AppFrame>
   );
 }

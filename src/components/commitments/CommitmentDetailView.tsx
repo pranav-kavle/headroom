@@ -1,23 +1,8 @@
 import type { CommitmentRow } from "@headroom/graph";
 import { TopBar } from "@/components/nav/TopBar";
 import { sourceLabel } from "@/lib/format";
+import { STATUS_LABELS, pillTone } from "@/lib/commitment-status";
 import styles from "./CommitmentDetailView.module.css";
-
-const STATUS_LABELS: Record<string, string> = {
-  open: "On track",
-  at_risk: "At risk",
-  overdue: "Overdue",
-  fulfilled: "Done",
-  cancelled: "Cancelled",
-  superseded: "Superseded",
-  rejected: "Rejected",
-};
-
-function pillTone(status: string): string {
-  if (status === "overdue") return "red";
-  if (status === "at_risk") return "amber";
-  return "green";
-}
 
 function initials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean);

@@ -25,11 +25,6 @@
   color: var(--hr-violet);
 }
 
-.tab.disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
 .tab svg {
   width: 20px;
   height: 20px;

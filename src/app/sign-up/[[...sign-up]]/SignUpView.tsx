@@ -7,7 +7,7 @@ import { useSignUp } from "@clerk/nextjs";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import styles from "./sign-up.module.css";
 
-const POST_SIGN_UP_URL = "/voice";
+const POST_SIGN_UP_URL = "/brief";
 const SSO_CALLBACK_URL = "/sign-up/sso-callback";
 const GENERIC_ERROR = "Something went wrong. Try again.";
 

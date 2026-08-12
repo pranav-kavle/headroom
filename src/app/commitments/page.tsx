@@ -4,6 +4,7 @@ import { getOrCreateUser } from "@/lib/auth";
 import { AppFrame } from "@/components/nav/AppFrame";
 import { TopBar } from "@/components/nav/TopBar";
 import { BottomTabBar } from "@/components/nav/BottomTabBar";
+import { VoiceOverlay } from "@/components/voice/VoiceOverlay";
 import { initialsFromEmail } from "@/lib/initials";
 import { CommitmentsView } from "@/components/commitments/CommitmentsView";
 
@@ -19,6 +20,7 @@ export default async function CommitmentsPage() {
     <AppFrame>
       <TopBar variant="home" initials={initialsFromEmail(user.email)} accountHref="/account" />
       <CommitmentsView commitments={commitments} />
+      <VoiceOverlay />
       <BottomTabBar active="commitments" />
     </AppFrame>
   );
