@@ -10,7 +10,7 @@ export default function SignInPage() {
         justifyContent: "center",
       }}
     >
-      <SignIn />
+      <SignIn fallbackRedirectUrl="/commitments" />
     </main>
   );
 }
