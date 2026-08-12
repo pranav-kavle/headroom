@@ -1,16 +1,5 @@
-import { SignUp } from "@clerk/nextjs";
+import { SignUpView } from "./SignUpView";
 
 export default function SignUpPage() {
-  return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <SignUp />
-    </main>
-  );
+  return <SignUpView />;
 }

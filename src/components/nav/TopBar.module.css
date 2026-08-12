@@ -1,0 +1,38 @@
+.bar {
+  flex: 0 0 50px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 14px;
+  background: var(--hr-bg);
+  border-bottom: 1px solid #f2f3f6;
+}
+
+.backButton {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--hr-violet);
+  font-size: 15px;
+  font-weight: 520;
+  text-decoration: none;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--hr-violet-bg);
+  color: var(--hr-violet-ink);
+  font-size: 12px;
+  font-weight: 660;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}

@@ -1,0 +1,13 @@
+.outer {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  background: var(--hr-canvas);
+}
+
+.frame {
+  width: 100%;
+  max-width: 390px;
+  display: flex;
+  flex-direction: column;
+}
