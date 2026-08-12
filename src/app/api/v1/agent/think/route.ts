@@ -5,7 +5,9 @@ import { verifyThinkToken } from "@/lib/agent-think-auth";
 import { resolveAnthropicApiKey } from "@/lib/agent";
 import { runAgentTurn, type MessageCreator } from "@/lib/agent-loop";
 import { recordCitations } from "@/lib/agent-think-citations";
-import { latestUserTranscript, toChatCompletionResponse, type ChatCompletionRequest } from "@/lib/openai-compat";
+import { latestUserTranscript, toChatCompletionStream, type ChatCompletionRequest } from "@/lib/openai-compat";
+
+const SSE_HEADERS = { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" };
 
 // Deepgram Voice Agent's `think` step, wearing an OpenAI chat-completions mask
 // — design doc 2026-08-12-deepgram-voice-agent-design.md §2/§5. Deepgram calls
@@ -30,7 +32,7 @@ export async function POST(request: NextRequest) {
   const model = body.model ?? "headroom-agent";
   const transcript = latestUserTranscript(body);
   if (!transcript.trim()) {
-    return NextResponse.json(toChatCompletionResponse("", model));
+    return new Response(toChatCompletionStream("", model), { headers: SSE_HEADERS });
   }
 
   const client = new Anthropic({ apiKey: resolveAnthropicApiKey() });
@@ -55,5 +57,5 @@ export async function POST(request: NextRequest) {
       .join(" ")} citations=${result.citations.length}`,
   );
 
-  return NextResponse.json(toChatCompletionResponse(result.text, model));
+  return new Response(toChatCompletionStream(result.text, model), { headers: SSE_HEADERS });
 }
