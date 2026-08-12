@@ -1,8 +1,14 @@
 .screen {
   flex: 1;
+  /* min-height:0 is what actually makes this scroll: a flex item defaults to
+     min-height:auto and refuses to shrink below its content, so without it the
+     shell grows past the viewport and takes the tab bar with it. */
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   background: var(--hr-bg);
-  padding: 22px 24px 48px;
+  /* No top bar on tab screens, so the status-bar inset lands here instead. */
+  padding: calc(22px + env(safe-area-inset-top)) 24px 48px;
 }
 
 .eyebrow {
@@ -63,6 +69,11 @@
   border-bottom: 1px solid var(--hr-line-2);
   text-decoration: none;
   color: inherit;
+  transition: background 0.1s ease-out;
+}
+
+.item:active {
+  background: var(--hr-surface-2);
 }
 
 .item:last-child {
@@ -161,4 +172,9 @@
   font-weight: 580;
   font-size: 13px;
   text-decoration: none;
+  transition: background 0.1s ease-out;
+}
+
+.otMore:active {
+  background: var(--hr-surface-2);
 }

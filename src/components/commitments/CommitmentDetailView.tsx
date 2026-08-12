@@ -21,7 +21,7 @@ export function CommitmentDetailView({ commitment }: { commitment: CommitmentRow
 
   return (
     <>
-      <TopBar variant="back" label="Commitments" href="/commitments" />
+      <TopBar label="Commitments" href="/commitments" />
       <main className={styles.screen}>
         <div className={styles.pill} data-tone={pillTone(commitment.status)}>
           {STATUS_LABELS[commitment.status] ?? commitment.status}

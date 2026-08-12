@@ -17,7 +17,7 @@
   transform: translateX(-50%);
   background: var(--hr-bg);
   border-radius: 26px 26px 0 0;
-  padding: 12px 22px 30px;
+  padding: 12px 22px calc(30px + env(safe-area-inset-bottom));
   box-shadow: 0 -10px 40px rgba(16, 18, 25, 0.16);
   z-index: 31;
 }

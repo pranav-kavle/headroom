@@ -36,6 +36,13 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: color.violet,
+  // `cover` is what makes env(safe-area-inset-*) resolve to anything but 0 —
+  // without it the layout viewport stops short of the notch and home
+  // indicator and the tab bar sits under the home bar.
+  viewportFit: "cover",
+  // Shrink the app shell when the virtual keyboard opens rather than letting
+  // it cover the bottom of the screen.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

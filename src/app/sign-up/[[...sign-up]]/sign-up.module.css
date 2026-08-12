@@ -1,9 +1,10 @@
 .page {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   justify-content: center;
   background: var(--hr-canvas);
-  padding: 48px 24px;
+  padding: calc(48px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right))
+    calc(48px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
 }
 
 .card {

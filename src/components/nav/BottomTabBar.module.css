@@ -1,10 +1,13 @@
 .bar {
-  flex: 0 0 78px;
+  /* 78px of bar (64px of tab + 14px breathing room) sitting above the home
+     indicator rather than underneath it. */
+  flex: none;
+  min-height: calc(78px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--hr-line);
   display: flex;
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(12px);
-  padding-bottom: 14px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
 }
 
 .tab {
@@ -19,6 +22,13 @@
   letter-spacing: 0.01em;
   color: var(--hr-ink-3);
   text-decoration: none;
+  /* Colour, not background — a full-width grey rectangle on tap reads as a
+     web link; native tab bars dim the glyph. */
+  transition: opacity 0.1s ease-out, color 0.1s ease-out;
+}
+
+.tab:active {
+  opacity: 0.4;
 }
 
 .tab[data-active="true"] {

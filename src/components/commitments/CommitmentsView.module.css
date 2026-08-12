@@ -1,8 +1,10 @@
 .screen {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   background: var(--hr-bg);
-  padding: 22px 24px 48px;
+  padding: calc(22px + env(safe-area-inset-top)) 24px 48px;
 }
 
 .eyebrow {
@@ -85,6 +87,11 @@
   white-space: nowrap;
   background: var(--hr-bg);
   cursor: pointer;
+  transition: transform 0.1s ease-out, background 0.1s ease-out;
+}
+
+.seg:active {
+  transform: scale(0.95);
 }
 
 .seg[data-on="true"] {
@@ -120,6 +127,11 @@
   border-bottom: 1px solid var(--hr-line-2);
   text-decoration: none;
   color: inherit;
+  transition: background 0.1s ease-out;
+}
+
+.crow:active {
+  background: var(--hr-surface-2);
 }
 
 .crow:last-child {

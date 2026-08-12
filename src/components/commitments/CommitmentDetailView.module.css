@@ -1,8 +1,10 @@
 .screen {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   background: var(--hr-bg);
-  padding: 20px 24px 48px;
+  padding: 20px 24px calc(48px + env(safe-area-inset-bottom));
 }
 
 .pill {

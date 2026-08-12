@@ -58,6 +58,11 @@ html,
 body {
   margin: 0;
   padding: 0;
+  height: 100%;
+  /* No rubber-band on the document and no browser swipe-back overscroll —
+     the app supplies its own Back affordance in the top bar. History still
+     behaves correctly if the platform invokes Back anyway. */
+  overscroll-behavior: none;
 }
 
 body {
@@ -67,6 +72,9 @@ body {
   -webkit-font-smoothing: antialiased;
   line-height: 1.5;
   font-size: 15px;
+  /* Suppressed because every tappable surface defines its own :active state
+     below; the grey system flash on top of those reads as a web page. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 h1,
@@ -86,6 +94,8 @@ p {
 button {
   font-family: inherit;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 a {

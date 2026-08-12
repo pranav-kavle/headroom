@@ -25,6 +25,20 @@ const TABS = [
       </>
     ),
   },
+  {
+    id: "controls",
+    label: "Controls",
+    href: "/controls",
+    // Sliders, not a gear: this screen is where you decide what Headroom may
+    // do on its own, which is closer to tuning than to configuring.
+    icon: (
+      <>
+        <path d="M4 8h10M18 8h2M4 16h4M12 16h8" />
+        <circle cx="16" cy="8" r="2" />
+        <circle cx="10" cy="16" r="2" />
+      </>
+    ),
+  },
 ] as const;
 
 export type TabId = (typeof TABS)[number]["id"];

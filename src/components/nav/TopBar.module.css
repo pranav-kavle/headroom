@@ -1,9 +1,12 @@
 .bar {
-  flex: 0 0 50px;
+  /* 50px of usable bar *below* the status bar / notch, with the bar's own
+     background bleeding up into the inset. */
+  flex: none;
+  min-height: calc(50px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 14px 0;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0 14px;
   background: var(--hr-bg);
   border-bottom: 1px solid #f2f3f6;
 }
@@ -16,23 +19,14 @@
   font-size: 15px;
   font-weight: 520;
   text-decoration: none;
+  /* Widen the target to the 44px minimum without moving the label. */
+  min-height: 44px;
+  padding-right: 8px;
+  margin-left: -4px;
+  padding-left: 4px;
+  transition: opacity 0.1s ease-out;
 }
 
-.spacer {
-  flex: 1;
-}
-
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  background: var(--hr-violet-bg);
-  color: var(--hr-violet-ink);
-  font-size: 12px;
-  font-weight: 660;
-  letter-spacing: -0.02em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
+.backButton:active {
+  opacity: 0.45;
 }
