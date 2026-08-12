@@ -103,6 +103,21 @@ token store, one review if it ever productionizes.
 - Every data point from Google Health carries platform, device, and recording method —
   useful, since provenance is mandatory anyway.
 
+### Rate limits & resumability
+
+A backfill reads thousands of artifacts, so every connector is a throttled, resumable
+job — not a loop.
+
+- **GitHub:** 5,000 req/hr authenticated. Use GraphQL to cut round-trips; prefer webhooks
+  over polling once backfilled.
+- **Gmail:** per-user quota units, and a 90-day backfill of ~5,000 messages will hit them.
+  Batch, and fetch metadata before bodies so cheap filtering happens first.
+- **Google Health:** rate limits are **undocumented**. Assume they exist, back off
+  exponentially, and log every 429.
+- **Every connector stores a cursor.** A crashed or killed backfill resumes from its last
+  committed artifact rather than restarting. This is not optional — the backfill will be
+  re-run many times while extraction is being tuned.
+
 ### Open
 
 Whether Google Health API access to one's own data requires Google Health Premium
@@ -114,23 +129,50 @@ Whether Google Health API access to one's own data requires Google Health Premiu
 
 Postgres via Prisma. This replaces the cashflow schema entirely.
 
+Every table below is scoped to its owning user with a direct `userId` column — the
+graph is single-tenant per user, never shared, so this is enforced at the schema level
+rather than derived through joins. Primary keys are `id String @default(uuid())`,
+column/table names map to snake_case, and every foreign key is `onDelete: Restrict`
+(matching the existing audit-chain models) — nothing in the life graph silently
+cascades away.
+
 ```
-Person            id, displayName, primaryEmail, githubLogin, createdAt
-Identity          personId, kind (email|github|phone|spoken_name), value, confidence
-Artifact          id, source, externalId, occurredAt, authorPersonId,
-                  excerpt, url, rawRef
-Commitment        id, direction (owed_by_me|owed_to_me), summary,
-                  counterpartyPersonId, dueAt, duePrecision (exact|day|week|vague),
+Person            id, userId, displayName, primaryEmail?, githubLogin?, createdAt
+
+Identity          id, userId, personId, kind (email|github|phone|spoken_name),
+                  value, confidence
+                  @@unique([userId, kind, value])
+
+Artifact          id, userId, source (github|gmail|calendar|voice_note|
+                  google_health), externalId?, occurredAt, authorPersonId?,
+                  excerpt, url?, rawRef?
+                  @@unique([userId, source, externalId])
+
+Commitment        id, userId, direction (owed_by_me|owed_to_me), summary,
+                  counterpartyPersonId, dueAt?, duePrecision (exact|day|week|vague),
                   status, confidence, sourceArtifactId, quote,
-                  closedAt, closedReason
-CommitmentEvent   commitmentId, kind (created|restated|moved|fulfilled|
-                  cancelled|superseded), artifactId, at
-CapacitySignal    kind (sleep|rhr|hrv|meeting_hours|free_hours), value, unit,
-                  forDate, sourceArtifactId
-Action            id, tier (1-4), kind, commitmentId, status (proposed|executed|
-                  approved|undone|failed), payload, externalRef,
-                  executedAt, undoneAt, agentRunId
-Label             commitmentId, verdict (real|not_real|already_done), labeledAt
+                  closedAt?, closedReason?, supersededByCommitmentId?
+
+CommitmentEvent   id, userId, commitmentId, kind (created|restated|moved|
+                  fulfilled|cancelled|superseded), artifactId, at
+
+CapacitySignal    id, userId, kind (sleep|rhr|hrv|meeting_hours|free_hours),
+                  value, unit, forDate, sourceArtifactId
+                  @@unique([userId, kind, forDate])
+
+Action            id, userId, tier (tier_1|tier_2|tier_3|tier_4), kind (string,
+                  connector-defined — e.g. "draft_reply", "calendar_hold"),
+                  commitmentId?, status (proposed|executed|approved|undone|
+                  failed), payload, externalRef?, executedAt?, undoneAt?,
+                  agentRunId
+
+Label             id, userId, commitmentId, verdict (real|not_real|already_done),
+                  labeledAt
+
+ConnectorCursor   id, userId, source (same enum as Artifact.source), cursor
+                  (json, connector-defined shape), status (idle|running|error),
+                  lastSyncedAt?, errorMessage?, updatedAt
+                  @@unique([userId, source])
 ```
 
 `Commitment.status`: `open | at_risk | overdue | fulfilled | cancelled | superseded | rejected`
@@ -138,24 +180,43 @@ Label             commitmentId, verdict (real|not_real|already_done), labeledAt
 **`Commitment.direction` matters.** Promises you are *owed* are commitments too, and
 they are the ones that silently rot. Surfaced as "Waiting on others."
 
+**`Action.commitmentId` is nullable** — most actions resolve a specific commitment,
+but triage/labelling (Tier 1) can act on an artifact without one yet existing.
+
+**`Action.tier` is an enum, not a raw int.** Core rule 3 makes the tier the load-bearing
+input to policy — a typed enum is checked at compile time everywhere §8's tiers are
+branched on, instead of trusting every call site to pass a valid 1–4.
+
+**`User.selfPersonId?`** points at the `Person` record representing the user
+themself, created and enriched during onboarding. Without it, the engine has no way to
+tell "I promised Maya" from "Maya promised me" — both are just artifacts authored by
+some `Person` unless one of them is known to *be* the user.
+
 ### Surviving models from the current schema
 
 Keep the agent-run audit chain — it is already the right shape for the Ledger:
 
-- `User`
+- `User` — gains `selfPersonId?` (above)
 - `TriggerEvent` → `AgentRun` → `AgentRunAttempt`
-- `RecommendationOutcome` + `DetectionMethod` — feedback capture, feeds `Label`
-- `CheckIn` / `CheckInChannel` — reusable for brief delivery records
+- `RecommendationOutcome` + `DetectionMethod` — feedback capture, feeds `Label`.
+  Gains a required `commitmentId` — an outcome is always about a specific
+  commitment's predicted resolution now that `Commitment` exists.
+- `CheckIn` / `CheckInChannel` — reusable for brief delivery records. Gains an
+  optional `commitmentId` — nullable because a check-in can be about an entire
+  brief, not one commitment.
 
 ### Belief invalidation
 
 Without this the graph rots within a month and the briefs go stale. All rules are
-deterministic and engine-side:
+deterministic and engine-side, and none of them require caching a derived value —
+each is computed at scan time from `Commitment` plus its `CommitmentEvent` history:
 
 - **fulfilled** — a later artifact from the user to the counterparty containing the
   deliverable; or the linked PR merged; or the held calendar event occurred.
 - **superseded** — a later commitment with the same counterparty and subject but a
-  different due date.
+  different due date. The superseding commitment is recorded via
+  `supersededByCommitmentId`, not just described in `closedReason` text — per core
+  rule 2, the replacement must be a traceable record, not prose.
 - **cancelled** — explicit release by the counterparty.
 - **stale** — due date passed by **7 days** with no supporting artifact either way.
   **Headroom asks rather than guessing.** Per core rule 5, an unresolvable commitment
@@ -485,3 +546,57 @@ prompt and start the restricted-scope review early.
 **A crowded field, honestly.** Limitless, Granola, Mem, Reflect, Sunsama, and Google and
 Apple shipping this into the OS. "AI plus my data" is not a wedge. The defensible
 position is the narrow claim in §2 plus the auditability in §3 — not breadth.
+
+---
+
+## 16. Capability backlog
+
+Candidates, not committed scope. §4 remains the v0 source list; nothing here is built
+until the §6 precision bar is met. Every write below still obeys §8's tiers — Tier 3
+(money, bookings, third parties) is prepared and never executed regardless of whether an
+API exists.
+
+### Read
+
+| Domain | Source | Effort |
+|---|---|---|
+| Travel status | Flight status/schedules (Duffel, Amadeus, AeroDataBox); hotel and fare search (Amadeus, Booking Demand) | Low |
+| Own itineraries | Gmail confirmations, boarding passes, reservations — richer than any travel API, free once Gmail lands | Free |
+| Transit | Google Maps Directions — travel time to the next meeting, "leave by". Pairs with the capacity strip | Very low |
+| Weather | Any weather API. Plan-quality signal, never a diagnosis | Trivial |
+| Deliveries | AfterShip / EasyPost / 17track, or parsed shipping mail | Low |
+| Places | Google Places / Yelp — hours, open now, phone | Low |
+| Events | Ticketmaster Discovery, SeatGeek | Low |
+| Contacts | Google People API — highest-signal seed for §6 entity resolution | Low |
+| Docs & notes | Drive, Dropbox, Notion | Low–medium |
+| Health & fitness | Google Health (§4), Oura, Strava, Whoop | Medium |
+| Bills | Plaid/Teller — subscriptions and bills as dated `owed_by_me` commitments | Medium |
+| Movie showtimes | No public API exists | Closed |
+
+### Act
+
+| Domain | Capability | Tier | Effort |
+|---|---|---|---|
+| Email | Draft, send, label, archive, unsubscribe | 1 / 2 | Low |
+| Calendar | Hold, move, decline, invite | 1 / 2 | Low |
+| Tasks | Create, complete, reschedule | 1 | Trivial |
+| GitHub | Comment, label, assign, review, open PRs, push branches | 2 / 4 | Low |
+| Slack / Teams | Post, schedule, set status, reply in thread | 2 | Medium |
+| Trackers | Linear, Jira, Asana, Notion — create, update, comment, reassign | 1 / 2 | Low each |
+| SMS & calls | Twilio — text or call a counterparty | 2 | Low |
+| Flights | Duffel, Amadeus — real end-to-end booking | 3 | Medium |
+| Hotels | Booking Demand, Expedia Rapid, Amadeus — partner approval needed | 3 | Medium–high |
+| Restaurants | OpenTable, Resy — partner-only, no consumer path | 3 | Closed |
+| Movies, retail, rideshare, delivery | Fandango, Amazon, Uber, DoorDash — closed to third-party purchase | 3 | Closed |
+| Money movement | Stripe, Wise, PayPal payouts — heavy KYC, distinct risk class | 3 | High |
+
+### The boundary
+
+Read is a cheap, near-unlimited surface. **Writes are concentrated in productivity SaaS**,
+plus three outliers: flights, hotels, and phone calls. Consumer commerce is structurally
+closed to programmatic action, so §8's "prepared, never executed" is an availability fact
+as much as a safety stance.
+
+For closed domains, *preparing the artifact* captures most of the value with zero
+integration: a booking link with date, time, and party size prefilled; a drafted email to
+the venue; a calendar hold already placed. This is the default for anything in Tier 3.
