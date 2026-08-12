@@ -23,18 +23,39 @@ export function latestUserTranscript(request: ChatCompletionRequest): string {
   return "";
 }
 
-export function toChatCompletionResponse(text: string, model: string) {
-  return {
-    id: `chatcmpl-${randomUUID()}`,
-    object: "chat.completion" as const,
-    created: Math.floor(Date.now() / 1000),
+// Deepgram's custom `think` endpoint requires this exact SSE shape — a plain
+// JSON chat-completion body runs fine but is never spoken, confirmed live via
+// the container logs (real text returned every time, nothing ever reached
+// speech). Not real token streaming: our own Tool Runner only has the full
+// reply once its two-turn loop finishes, so this sends it as a single delta
+// chunk followed by the closing chunk and `[DONE]`, matching the framing
+// Deepgram's parser expects without pretending to stream token-by-token.
+export function toChatCompletionStream(text: string, model: string): ReadableStream<Uint8Array> {
+  const id = `chatcmpl-${randomUUID()}`;
+  const created = Math.floor(Date.now() / 1000);
+
+  const contentChunk = {
+    id,
+    object: "chat.completion.chunk" as const,
+    created,
     model,
-    choices: [
-      {
-        index: 0,
-        message: { role: "assistant" as const, content: text },
-        finish_reason: "stop" as const,
-      },
-    ],
+    choices: [{ index: 0, delta: { role: "assistant" as const, content: text }, finish_reason: null }],
   };
+  const finalChunk = {
+    id,
+    object: "chat.completion.chunk" as const,
+    created,
+    model,
+    choices: [{ index: 0, delta: {}, finish_reason: "stop" as const }],
+  };
+
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(contentChunk)}\n\n`));
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
 }

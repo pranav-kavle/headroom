@@ -202,13 +202,16 @@ requires anything beyond having an account, confirmable in the Deepgram dashboar
   docs didn't say, but `@deepgram/agents`' source does: `AgentPlayer.interrupt()` closes
   and discards the playback `AudioContext`, and its own comment says to call it exactly
   on that event. Nothing server-side is assumed; §5 wires this in `voice-session.ts`.
-- **Open, needs hands-on verification:** whether the custom `think` endpoint contract
-  supports a streaming response (`stream: true`, incremental deltas) the way OpenAI's
-  chat-completions API does. If it doesn't, the harness doc's §5 mitigation — handing
-  the first sentence to TTS without waiting for the rest — isn't available on this leg,
-  and the two-model-round-trip latency (turn 1 decides on a tool call, turn 2 phrases
-  the result) lands as a single round-trip wait instead of a pipelined one. Worth
-  measuring with `timing.ts` before deciding whether it matters.
+- **Resolved, the hard way:** a custom `think` endpoint **requires** an SSE response —
+  confirmed live. A plain `NextResponse.json(...)` body let `/api/v1/agent/think` run
+  end to end and log a real reply every time, but Deepgram never spoke it: it can't
+  parse a response that isn't chunked as `data: {...}\n\n` frames ending in
+  `data: [DONE]`. `openai-compat.ts`'s `toChatCompletionStream` sends the full reply as
+  a single delta chunk rather than real token-level streaming — our own Tool Runner only
+  has the finished text once its two-turn loop completes, so there's nothing to stream
+  incrementally yet. The harness doc's §5 mitigation (first sentence to TTS before the
+  rest finishes) still isn't available on this leg; that stays a real latency cost, now
+  correctly attributed instead of hidden behind a silently-ignored response.
 
 ## 9. Non-goals, carried over unchanged from the harness doc's §8
 

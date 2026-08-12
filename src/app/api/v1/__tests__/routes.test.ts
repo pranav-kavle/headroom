@@ -152,6 +152,15 @@ describe("POST /api/v1/voice/agent-token", () => {
   });
 });
 
+async function readSseEvents(response: Response): Promise<unknown[]> {
+  const body = await response.text();
+  return body
+    .trim()
+    .split("\n\n")
+    .filter((event) => event && event !== "data: [DONE]")
+    .map((event) => JSON.parse(event.replace(/^data: /, "")));
+}
+
 function makeThinkRequest(messages: unknown[], token?: string) {
   return new NextRequest("http://localhost/api/v1/agent/think", {
     method: "POST",
@@ -184,7 +193,7 @@ describe("POST /api/v1/agent/think", () => {
     expect(response.status).toBe(401);
   });
 
-  it("runs the agent turn on the latest user message and returns an OpenAI-shaped reply", async () => {
+  it("runs the agent turn on the latest user message and streams an OpenAI-shaped reply", async () => {
     verifyThinkToken.mockReturnValue(USER_ROW.id);
     runAgentTurn.mockResolvedValue({
       text: "You owe Maya the deck.",
@@ -203,13 +212,15 @@ describe("POST /api/v1/agent/think", () => {
         "valid",
       ),
     );
-    const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.choices[0].message).toEqual({
-      role: "assistant",
-      content: "You owe Maya the deck.",
-    });
+    // Deepgram's custom think endpoint requires SSE — a plain JSON body runs
+    // fine but is never spoken, confirmed live via the container logs.
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+    const events = (await readSseEvents(response)) as Array<{
+      choices: [{ delta: { role?: string; content?: string } }];
+    }>;
+    expect(events[0].choices[0].delta).toEqual({ role: "assistant", content: "You owe Maya the deck." });
     expect(runAgentTurn).toHaveBeenCalledWith(
       expect.objectContaining({ transcript: "what do I owe?" }),
     );
