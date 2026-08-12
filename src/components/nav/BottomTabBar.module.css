@@ -18,13 +18,16 @@
   font-weight: 590;
   letter-spacing: 0.01em;
   color: var(--hr-ink-3);
-  opacity: 0.45;
-  cursor: default;
+  text-decoration: none;
 }
 
 .tab[data-active="true"] {
   color: var(--hr-violet);
-  opacity: 1;
+}
+
+.tab.disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .tab svg {
