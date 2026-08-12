@@ -1,16 +1,16 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/prisma";
+import { createUser, findUserByClerkId, type UserRow } from "@headroom/graph";
 
 /**
  * Returns the Postgres User row for the signed-in Clerk session, creating it
  * on first sight (lazy sync — no Clerk webhook needed). Returns null if
  * there's no signed-in session.
  */
-export async function getOrCreateUser() {
+export async function getOrCreateUser(): Promise<UserRow | null> {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) return null;
 
-  const existing = await prisma.user.findUnique({ where: { clerkUserId } });
+  const existing = await findUserByClerkId(clerkUserId);
   if (existing) return existing;
 
   const clerkUser = await currentUser();
@@ -19,11 +19,5 @@ export async function getOrCreateUser() {
     throw new Error(`Clerk user ${clerkUserId} has no primary email address`);
   }
 
-  return prisma.user.create({
-    data: {
-      clerkUserId,
-      email,
-      v1Eligibility: "schedule_c_supported",
-    },
-  });
+  return createUser({ clerkUserId, email });
 }

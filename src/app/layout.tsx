@@ -1,6 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
+import { color } from "@headroom/tokens";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import "./globals.css";
 
 const inter = Inter({
@@ -24,7 +26,16 @@ const newsreader = Newsreader({
 
 export const metadata: Metadata = {
   title: "Headroom",
-  description: "Safe-to-Pay, defended.",
+  description: "Everything you owe, weighed against what you have left.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Headroom",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: color.violet,
 };
 
 export default function RootLayout({
@@ -38,7 +49,10 @@ export default function RootLayout({
         lang="en"
         className={`${inter.variable} ${jetbrainsMono.variable} ${newsreader.variable}`}
       >
-        <body>{children}</body>
+        <body>
+          {children}
+          <ServiceWorkerRegistration />
+        </body>
       </html>
     </ClerkProvider>
   );

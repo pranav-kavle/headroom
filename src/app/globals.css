@@ -1,10 +1,12 @@
 /* ============================================================
    Headroom — design system
-   Ported from the UI prototype (cashflow-companion (5).html).
+   Ported from prototype/headroom.html.
    Scope: tokens, reset, typography, and cross-view primitives only.
    View-specific layouts (dashboard, onboarding, landing, etc.) are
    built per-screen on top of this, not included here.
    ============================================================ */
+
+@import "./tokens.css";
 
 :root {
   /* surfaces */

@@ -1,0 +1,36 @@
+.bar {
+  flex: 0 0 78px;
+  border-top: 1px solid var(--hr-line);
+  display: flex;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  padding-bottom: 14px;
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 590;
+  letter-spacing: 0.01em;
+  color: var(--hr-ink-3);
+  text-decoration: none;
+}
+
+.tab[data-active="true"] {
+  color: var(--hr-violet);
+}
+
+.tab.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tab svg {
+  width: 20px;
+  height: 20px;
+}
