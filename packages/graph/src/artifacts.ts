@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "./client";
 import type { ArtifactSource } from "./generated/prisma/client";
 
@@ -24,5 +25,6 @@ export function createArtifact(input: {
   url?: string;
   rawRef?: string;
 }): Promise<ArtifactRow> {
-  return prisma.artifact.create({ data: input });
+  // Explicit id — see the comment in users.ts createUser for why.
+  return prisma.artifact.create({ data: { id: randomUUID(), ...input } });
 }
