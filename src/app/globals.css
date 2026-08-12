@@ -6,6 +6,8 @@
    built per-screen on top of this, not included here.
    ============================================================ */
 
+@import "./tokens.css";
+
 :root {
   /* surfaces */
   --paper: #FAFAF8;
