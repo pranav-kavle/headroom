@@ -3,8 +3,9 @@
 // Surviving models from the pre-pivot schema: the agent-run audit chain, kept
 // because it is already the right shape for the Ledger. See
 // docs/superpowers/specs/2026-08-11-headroom-commitments-design.md §5.
-// The life graph (Person, Commitment, Artifact, ...) is not modeled here yet
-// — it lands in the life-graph implementation plan.
+// The life graph (Person, Commitment, Artifact, ...) is modeled below,
+// per §5. Every life-graph table is scoped to its owning user with a direct
+// userId column — the graph is single-tenant per user, never shared.
 
 generator client {
   provider = "prisma-client"
@@ -20,13 +21,24 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
-  id          String   @id @default(uuid())
-  clerkUserId String   @unique @map("clerk_user_id")
-  email       String
-  createdAt   DateTime @default(now()) @map("created_at")
+  id           String   @id @default(uuid())
+  clerkUserId  String   @unique @map("clerk_user_id")
+  email        String
+  selfPersonId String?  @unique @map("self_person_id")
+  createdAt    DateTime @default(now()) @map("created_at")
 
-  triggerEvents TriggerEvent[]
-  agentRuns     AgentRun[]
+  selfPerson       Person?           @relation("UserSelfPerson", fields: [selfPersonId], references: [id], onDelete: Restrict)
+  triggerEvents    TriggerEvent[]
+  agentRuns        AgentRun[]
+  people           Person[]          @relation("PersonOwner")
+  identities       Identity[]
+  artifacts        Artifact[]
+  commitments      Commitment[]
+  commitmentEvents CommitmentEvent[]
+  capacitySignals  CapacitySignal[]
+  actions          Action[]
+  labels           Label[]
+  connectorCursors ConnectorCursor[]
 
   @@map("user")
 }
@@ -81,6 +93,7 @@ model AgentRun {
   triggerEvent TriggerEvent      @relation(fields: [triggerEventId], references: [id])
   attempts     AgentRunAttempt[]
   checkIns     CheckIn[]
+  actions      Action[]
 
   @@index([userId])
   @@index([triggerEventId])
@@ -104,13 +117,278 @@ model AgentRunAttempt {
 }
 
 // ---------------------------------------------------------------------------
+// The life graph — design doc §5
+// ---------------------------------------------------------------------------
+
+enum IdentityKind {
+  email
+  github
+  phone
+  spoken_name
+}
+
+enum ArtifactSource {
+  github
+  gmail
+  calendar
+  voice_note
+  google_health
+}
+
+enum CommitmentDirection {
+  owed_by_me
+  owed_to_me
+}
+
+enum DuePrecision {
+  exact
+  day
+  week
+  vague
+}
+
+enum CommitmentStatus {
+  open
+  at_risk
+  overdue
+  fulfilled
+  cancelled
+  superseded
+  rejected
+}
+
+enum CommitmentEventKind {
+  created
+  restated
+  moved
+  fulfilled
+  cancelled
+  superseded
+}
+
+enum CapacitySignalKind {
+  sleep
+  rhr
+  hrv
+  meeting_hours
+  free_hours
+}
+
+enum ActionTier {
+  tier_1
+  tier_2
+  tier_3
+  tier_4
+}
+
+enum ActionStatus {
+  proposed
+  executed
+  approved
+  undone
+  failed
+}
+
+enum LabelVerdict {
+  real
+  not_real
+  already_done
+}
+
+enum ConnectorCursorStatus {
+  idle
+  running
+  error
+}
+
+model Person {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  displayName  String   @map("display_name")
+  primaryEmail String?  @map("primary_email")
+  githubLogin  String?  @map("github_login")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user                      User         @relation("PersonOwner", fields: [userId], references: [id])
+  selfOfUser                User?        @relation("UserSelfPerson")
+  identities                Identity[]
+  authoredArtifacts         Artifact[]
+  commitmentsAsCounterparty Commitment[]
+
+  @@index([userId])
+  @@map("person")
+}
+
+model Identity {
+  id         String       @id @default(uuid())
+  userId     String       @map("user_id")
+  personId   String       @map("person_id")
+  kind       IdentityKind
+  value      String
+  confidence Decimal      @db.Decimal(5, 4)
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  person Person @relation(fields: [personId], references: [id])
+
+  @@unique([userId, kind, value])
+  @@index([personId])
+  @@map("identity")
+}
+
+model Artifact {
+  id             String         @id @default(uuid())
+  userId         String         @map("user_id")
+  source         ArtifactSource
+  externalId     String?        @map("external_id")
+  occurredAt     DateTime       @map("occurred_at")
+  authorPersonId String?        @map("author_person_id")
+  excerpt        String
+  url            String?
+  rawRef         String?        @map("raw_ref")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  user               User              @relation(fields: [userId], references: [id])
+  authorPerson       Person?           @relation(fields: [authorPersonId], references: [id], onDelete: Restrict)
+  sourcedCommitments Commitment[]
+  commitmentEvents   CommitmentEvent[]
+  capacitySignals    CapacitySignal[]
+
+  @@unique([userId, source, externalId])
+  @@index([userId])
+  @@index([authorPersonId])
+  @@map("artifact")
+}
+
+model Commitment {
+  id                       String              @id @default(uuid())
+  userId                   String              @map("user_id")
+  direction                CommitmentDirection
+  summary                  String
+  counterpartyPersonId     String              @map("counterparty_person_id")
+  dueAt                    DateTime?           @map("due_at")
+  duePrecision             DuePrecision        @map("due_precision")
+  status                   CommitmentStatus    @default(open)
+  confidence               Decimal             @db.Decimal(5, 4)
+  sourceArtifactId         String              @map("source_artifact_id")
+  quote                    String
+  closedAt                 DateTime?           @map("closed_at")
+  closedReason             String?             @map("closed_reason")
+  supersededByCommitmentId String?             @map("superseded_by_commitment_id")
+  createdAt                DateTime            @default(now()) @map("created_at")
+
+  user                     User                    @relation(fields: [userId], references: [id])
+  counterpartyPerson       Person                  @relation(fields: [counterpartyPersonId], references: [id])
+  sourceArtifact           Artifact                @relation(fields: [sourceArtifactId], references: [id])
+  supersededBy             Commitment?             @relation("CommitmentSupersession", fields: [supersededByCommitmentId], references: [id], onDelete: Restrict)
+  superseded               Commitment[]            @relation("CommitmentSupersession")
+  events                   CommitmentEvent[]
+  actions                  Action[]
+  labels                   Label[]
+  checkIns                 CheckIn[]
+  recommendationOutcomes   RecommendationOutcome[]
+
+  @@index([userId])
+  @@index([counterpartyPersonId])
+  @@index([sourceArtifactId])
+  @@index([status])
+  @@index([dueAt])
+  @@map("commitment")
+}
+
+model CommitmentEvent {
+  id           String              @id @default(uuid())
+  userId       String              @map("user_id")
+  commitmentId String              @map("commitment_id")
+  kind         CommitmentEventKind
+  artifactId   String              @map("artifact_id")
+  at           DateTime
+
+  user       User       @relation(fields: [userId], references: [id])
+  commitment Commitment @relation(fields: [commitmentId], references: [id])
+  artifact   Artifact   @relation(fields: [artifactId], references: [id])
+
+  @@index([userId])
+  @@index([commitmentId])
+  @@index([artifactId])
+  @@map("commitment_event")
+}
+
+model CapacitySignal {
+  id               String             @id @default(uuid())
+  userId           String             @map("user_id")
+  kind             CapacitySignalKind
+  value            Decimal            @db.Decimal(10, 4)
+  unit             String
+  forDate          DateTime           @map("for_date") @db.Date
+  sourceArtifactId String             @map("source_artifact_id")
+
+  user           User     @relation(fields: [userId], references: [id])
+  sourceArtifact Artifact @relation(fields: [sourceArtifactId], references: [id])
+
+  @@unique([userId, kind, forDate])
+  @@index([sourceArtifactId])
+  @@map("capacity_signal")
+}
+
+model Action {
+  id           String       @id @default(uuid())
+  userId       String       @map("user_id")
+  tier         ActionTier
+  kind         String
+  commitmentId String?      @map("commitment_id")
+  status       ActionStatus
+  payload      Json
+  externalRef  String?      @map("external_ref")
+  executedAt   DateTime?    @map("executed_at")
+  undoneAt     DateTime?    @map("undone_at")
+  agentRunId   String       @map("agent_run_id")
+
+  user       User        @relation(fields: [userId], references: [id])
+  commitment Commitment? @relation(fields: [commitmentId], references: [id], onDelete: Restrict)
+  agentRun   AgentRun    @relation(fields: [agentRunId], references: [id])
+
+  @@index([userId])
+  @@index([commitmentId])
+  @@index([agentRunId])
+  @@index([status])
+  @@map("action")
+}
+
+model Label {
+  id           String       @id @default(uuid())
+  userId       String       @map("user_id")
+  commitmentId String       @map("commitment_id")
+  verdict      LabelVerdict
+  labeledAt    DateTime     @map("labeled_at")
+
+  user       User       @relation(fields: [userId], references: [id])
+  commitment Commitment @relation(fields: [commitmentId], references: [id])
+
+  @@index([userId])
+  @@index([commitmentId])
+  @@map("label")
+}
+
+model ConnectorCursor {
+  id           String                @id @default(uuid())
+  userId       String                @map("user_id")
+  source       ArtifactSource
+  cursor       Json?
+  status       ConnectorCursorStatus @default(idle)
+  lastSyncedAt DateTime?             @map("last_synced_at")
+  errorMessage String?               @map("error_message")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, source])
+  @@map("connector_cursor")
+}
+
+// ---------------------------------------------------------------------------
 // Feedback loop — the one surfaced decision and whether the user acted on it
 // ---------------------------------------------------------------------------
-//
-// CheckIn and RecommendationOutcome both had a required relation to a model
-// deleted in the pivot. Only the offending relation fields were stripped; the
-// rest of each model survives mechanically unchanged, ready to be re-pointed
-// at a future Commitment/Brief model.
 
 enum CheckInChannel {
   ui
@@ -120,6 +398,7 @@ enum CheckInChannel {
 model CheckIn {
   id                String         @id @default(uuid())
   agentRunId        String         @map("agent_run_id")
+  commitmentId      String?        @map("commitment_id")
   decisionText      String         @map("decision_text")
   whatChanged       String?        @map("what_changed")
   materialityReason String?        @map("materiality_reason")
@@ -127,9 +406,11 @@ model CheckIn {
   response          Json?
   respondedAt       DateTime?      @map("responded_at")
 
-  agentRun AgentRun @relation(fields: [agentRunId], references: [id])
+  agentRun   AgentRun    @relation(fields: [agentRunId], references: [id])
+  commitment Commitment? @relation(fields: [commitmentId], references: [id], onDelete: Restrict)
 
   @@index([agentRunId])
+  @@index([commitmentId])
   @@map("check_in")
 }
 
@@ -140,6 +421,7 @@ enum DetectionMethod {
 
 model RecommendationOutcome {
   id                String           @id @default(uuid())
+  commitmentId      String           @map("commitment_id")
   recommendedAmount Decimal          @map("recommended_amount") @db.Decimal(14, 2)
   acted             Boolean?
   observedAmount    Decimal?         @map("observed_amount") @db.Decimal(14, 2)
@@ -147,5 +429,8 @@ model RecommendationOutcome {
   confidence        Decimal?         @db.Decimal(5, 4)
   observedAt        DateTime?        @map("observed_at")
 
+  commitment Commitment @relation(fields: [commitmentId], references: [id])
+
+  @@index([commitmentId])
   @@map("recommendation_outcome")
 }
