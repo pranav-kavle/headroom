@@ -51,4 +51,7 @@ jobs:
             --set-env-vars \
               NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" \
               CLERK_SECRET_KEY="${{ secrets.CLERK_SECRET_KEY }}" \
-              TOKEN_ENCRYPTION_KEY="${{ secrets.TOKEN_ENCRYPTION_KEY }}"
+              TOKEN_ENCRYPTION_KEY="${{ secrets.TOKEN_ENCRYPTION_KEY }}" \
+              DEEPGRAM_API_KEY="${{ secrets.DEEPGRAM_API_KEY }}" \
+              ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}" \
+              AGENT_THINK_SECRET="${{ secrets.AGENT_THINK_SECRET }}"
