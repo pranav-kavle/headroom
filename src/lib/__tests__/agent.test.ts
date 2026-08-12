@@ -86,4 +86,13 @@ describe("SYSTEM_PROMPT", () => {
   it("tells the model to quote the user rather than paraphrase, for provenance", () => {
     expect(SYSTEM_PROMPT).toMatch(/quote/i);
   });
+
+  // Core rule 2 scopes provenance to claims about the user's life — it was
+  // never a ban on conversation in general. The old prompt's "you have
+  // exactly two jobs" framing over-applied it, making ordinary chat feel
+  // broken. The constraints stay; only the scope changes.
+  it("allows general conversation rather than limiting the model to two jobs", () => {
+    expect(SYSTEM_PROMPT).not.toMatch(/exactly two jobs/i);
+    expect(SYSTEM_PROMPT).toMatch(/anything|any topic|general conversation/i);
+  });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { AgentMicrophone, AgentPlayer, AgentSession } from "@deepgram/agents";
 import { buildAgentSettings, createVoiceSession } from "../voice-session";
 
 describe("buildAgentSettings", () => {
@@ -148,6 +149,32 @@ describe("createVoiceSession", () => {
     sessionHandlers.get("conversation-text")?.({ role: "assistant", content: "You owe Maya the deck." });
 
     expect(onConversationText).toHaveBeenCalledWith({ role: "assistant", content: "You owe Maya the deck." });
+  });
+
+  it("pins mic input and TTS output to the same sample rate on both sides, so playback isn't decoded at the wrong rate", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30, thinkAuthToken: "t" }),
+      ),
+    );
+
+    await createVoiceSession({}, { fetchImpl, thinkEndpointUrl: "https://app.example.com/api/v1/agent/think" });
+
+    // AgentSession only tells Deepgram what output rate to actually use if
+    // `audio.output` is explicitly set — otherwise Deepgram picks its own
+    // default while AgentPlayer still assumes 24kHz, decoding every chunk at
+    // the wrong rate. Pinning both sides removes the ambiguity outright.
+    const sessionConfig = vi.mocked(AgentSession).mock.calls.at(-1)?.[0];
+    expect(sessionConfig?.audio).toEqual({
+      input: { encoding: "linear16", sampleRate: 16000 },
+      output: { encoding: "linear16", sampleRate: 24000 },
+    });
+
+    const micOptions = vi.mocked(AgentMicrophone).mock.calls.at(-1)?.[1];
+    expect(micOptions?.sampleRate).toBe(16000);
+
+    const playerOptions = vi.mocked(AgentPlayer).mock.calls.at(-1)?.[0];
+    expect(playerOptions?.sampleRate).toBe(24000);
   });
 
   it("stops the microphone, disposes the player, and disconnects on stop()", async () => {
