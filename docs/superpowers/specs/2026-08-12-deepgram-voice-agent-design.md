@@ -131,13 +131,29 @@ happens inside this route before it returns finished text.
 `src/app/api/v1/voice/speech/route.ts`** — deleted. Deepgram's session now owns both
 legs; there's no batch STT call and no separate speech-synthesis call left to make.
 
+**`src/lib/voice-session.ts`** — new. Port rule 5's `VoiceSession` abstraction: wraps
+`@deepgram/agents`'s `AgentSession`/`AgentMicrophone`/`AgentPlayer` behind `start()`/
+`stop()` and a handful of callbacks, so `VoiceRecorder.tsx` never touches Deepgram's SDK
+directly — the same shape `MediaRecorder` was already abstracted behind. Also where
+§9 gotcha #1 resurfaces: `AgentPlayer` creates its `AudioContext` lazily, on the first
+`queue()` call, which would otherwise be whenever the first agent-audio chunk arrives —
+long after the tap. Fixed by priming it (`queue()` on a silent frame) synchronously,
+before this module's first `await`, so it still runs inside the caller's gesture.
+
+**`src/app/api/v1/agent/think/citations/route.ts`** — new. `GET`, returns and clears the
+citations most recently recorded by `/api/v1/agent/think` for the signed-in user. Needed
+because citations are produced inside `agent/think` and never reach Deepgram — there's no
+field in the OpenAI-shaped response Deepgram forwards to the browser — so the client
+polls this side channel right after each assistant `conversation-text` event instead.
+
 **`src/components/voice/VoiceRecorder.tsx`** — rewritten. Tap to start: mint a token,
-open the WebSocket, stream mic audio continuously for the session's duration. Tap to
-end: close the socket, release the mic. Renders a running log of turn/reply/citation
-entries rather than one card per press, since a session is many turns. On detecting
-`UserStartedSpeaking` while agent audio is still playing, stops local playback
-immediately — this is a client-side safeguard regardless of whatever Deepgram does
-server-side (§7 flags this as unverified).
+open the WebSocket via `voice-session.ts`, stream mic audio continuously for the
+session's duration. Tap to end: close the socket, release the mic. Renders a running log
+of turn entries rather than one transcript+reply pair per press, since a session is many
+turns; each assistant entry's citations arrive slightly after the entry itself, from the
+citations route above. On `UserStartedSpeaking`, calls `AgentPlayer.interrupt()` to flush
+queued audio immediately — confirmed via the SDK's source as the documented client-side
+barge-in mechanism (§8 resolves what was an open question here).
 
 **`src/lib/timing.ts`** — kept, per-leg latency logging still matters; the legs it
 measures change (session-open, first-token-from-think, first-audio-byte) but the
@@ -181,11 +197,11 @@ requires anything beyond having an account, confirmable in the Deepgram dashboar
   `"Something went wrong"` state used elsewhere.
 - A tool throwing inside `agent/think`'s Tool Runner call → returned as an error result
   to the model, per the SDK's existing contract; unchanged from today.
-- **Open, needs hands-on verification before shipping:** Deepgram's docs don't state
-  whether the Voice Agent session auto-truncates in-flight TTS audio server-side when
-  `UserStartedSpeaking` fires mid-speech, or leaves that to the client. §5's client-side
-  stop-on-interrupt handles this defensively either way, but if Deepgram already does
-  it server-side there may be a double-stop race worth smoothing over once observed.
+- **Resolved:** whether the Voice Agent session auto-truncates in-flight TTS audio
+  server-side on `UserStartedSpeaking`, or leaves that to the client — Deepgram's own
+  docs didn't say, but `@deepgram/agents`' source does: `AgentPlayer.interrupt()` closes
+  and discards the playback `AudioContext`, and its own comment says to call it exactly
+  on that event. Nothing server-side is assumed; §5 wires this in `voice-session.ts`.
 - **Open, needs hands-on verification:** whether the custom `think` endpoint contract
   supports a streaming response (`stream: true`, incremental deltas) the way OpenAI's
   chat-completions API does. If it doesn't, the harness doc's §5 mitigation — handing

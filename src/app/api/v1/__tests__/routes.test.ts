@@ -1,21 +1,33 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { HealthResponse, MeResponse, TranscriptionResponse, UsersResponse } from "@headroom/contracts";
+import { AgentTokenResponse, AgentTurnCitationsResponse, HealthResponse, MeResponse, UsersResponse } from "@headroom/contracts";
+import { recordCitations } from "@/lib/agent-think-citations";
 
 const getOrCreateUser = vi.fn();
 const listUsers = vi.fn();
 const pingDatabase = vi.fn();
-const createArtifact = vi.fn();
-const transcribe = vi.fn();
+const listCommitments = vi.fn();
+const mintDeepgramAgentToken = vi.fn();
+const signThinkToken = vi.fn();
+const verifyThinkToken = vi.fn();
+const runAgentTurn = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getOrCreateUser: () => getOrCreateUser() }));
 vi.mock("@headroom/graph", () => ({
   listUsers: () => listUsers(),
   pingDatabase: () => pingDatabase(),
-  createArtifact: (input: unknown) => createArtifact(input),
+  listCommitments: (userId: string) => listCommitments(userId),
 }));
-vi.mock("@/lib/stt", () => ({
-  StubSttProvider: vi.fn().mockImplementation(() => ({ transcribe })),
+vi.mock("@/lib/voice-agent-token", () => ({
+  mintDeepgramAgentToken: () => mintDeepgramAgentToken(),
+}));
+vi.mock("@/lib/agent-think-auth", () => ({
+  signThinkToken: (userId: string) => signThinkToken(userId),
+  verifyThinkToken: (token: string) => verifyThinkToken(token),
+}));
+vi.mock("@/lib/agent", () => ({ resolveAnthropicApiKey: () => "sk-ant-test" }));
+vi.mock("@/lib/agent-loop", () => ({
+  runAgentTurn: (input: unknown) => runAgentTurn(input),
 }));
 
 const USER_ROW = {
@@ -106,61 +118,149 @@ describe("GET /api/v1/users", () => {
   });
 });
 
-function makeVoiceRequest(final: boolean) {
-  return new NextRequest(
-    `http://localhost/api/v1/voice/transcriptions${final ? "?final=true" : ""}`,
-    {
-      method: "POST",
-      headers: { "content-type": "audio/webm" },
-      body: new Uint8Array([1, 2, 3]),
-    },
-  );
-}
-
-describe("POST /api/v1/voice/transcriptions", () => {
+describe("POST /api/v1/voice/agent-token", () => {
   it("returns 401 when signed out", async () => {
     getOrCreateUser.mockResolvedValue(null);
-    const { POST } = await import("../voice/transcriptions/route");
+    const { POST } = await import("../voice/agent-token/route");
 
-    expect((await POST(makeVoiceRequest(false))).status).toBe(401);
+    expect((await POST()).status).toBe(401);
   });
 
-  it("returns the running transcript without persisting anything for a non-final chunk", async () => {
+  it("mints Deepgram's connection token and a signed think token when signed in", async () => {
     getOrCreateUser.mockResolvedValue(USER_ROW);
-    transcribe.mockResolvedValue({ transcript: "hey so I was" });
-    const { POST } = await import("../voice/transcriptions/route");
+    mintDeepgramAgentToken.mockResolvedValue({ accessToken: "dg-jwt", expiresInSeconds: 30 });
+    signThinkToken.mockReturnValue("signed-think-token");
+    const { POST } = await import("../voice/agent-token/route");
 
-    const response = await POST(makeVoiceRequest(false));
+    const response = await POST();
 
     expect(response.status).toBe(200);
-    expect(TranscriptionResponse.parse(await response.json())).toEqual({
-      transcript: "hey so I was",
-      isFinal: false,
+    expect(AgentTokenResponse.parse(await response.json())).toEqual({
+      deepgramAccessToken: "dg-jwt",
+      deepgramExpiresInSeconds: 30,
+      thinkAuthToken: "signed-think-token",
     });
-    expect(createArtifact).not.toHaveBeenCalled();
+    expect(signThinkToken).toHaveBeenCalledWith(USER_ROW.id);
   });
 
-  it("persists a voice_note artifact and returns its id for the final chunk", async () => {
+  it("returns 502 when Deepgram's grant endpoint fails", async () => {
     getOrCreateUser.mockResolvedValue(USER_ROW);
-    transcribe.mockResolvedValue({ transcript: "hey so I was thinking we should ship this" });
-    createArtifact.mockResolvedValue({ id: "8e6f2f5a-1c1e-4e9a-9c1a-2c9f1e2b3a4d" });
-    const { POST } = await import("../voice/transcriptions/route");
+    mintDeepgramAgentToken.mockRejectedValue(new Error("Deepgram token grant failed (401)"));
+    const { POST } = await import("../voice/agent-token/route");
 
-    const response = await POST(makeVoiceRequest(true));
-    const body = TranscriptionResponse.parse(await response.json());
+    expect((await POST()).status).toBe(502);
+  });
+});
 
-    expect(response.status).toBe(200);
-    expect(body).toEqual({
-      transcript: "hey so I was thinking we should ship this",
-      isFinal: true,
-      artifactId: "8e6f2f5a-1c1e-4e9a-9c1a-2c9f1e2b3a4d",
+function makeThinkRequest(messages: unknown[], token?: string) {
+  return new NextRequest("http://localhost/api/v1/agent/think", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ model: "headroom-agent", messages }),
+  });
+}
+
+describe("POST /api/v1/agent/think", () => {
+  it("returns 401 when there is no bearer token", async () => {
+    const { POST } = await import("../agent/think/route");
+
+    const response = await POST(makeThinkRequest([{ role: "user", content: "hi" }]));
+
+    expect(response.status).toBe(401);
+    expect(verifyThinkToken).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when the bearer token fails verification", async () => {
+    verifyThinkToken.mockImplementation(() => {
+      throw new Error("Think token has expired");
     });
-    expect(createArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: USER_ROW.id,
-        source: "voice_note",
-        excerpt: "hey so I was thinking we should ship this",
-      }),
+    const { POST } = await import("../agent/think/route");
+
+    const response = await POST(makeThinkRequest([{ role: "user", content: "hi" }], "stale"));
+
+    expect(response.status).toBe(401);
+  });
+
+  it("runs the agent turn on the latest user message and returns an OpenAI-shaped reply", async () => {
+    verifyThinkToken.mockReturnValue(USER_ROW.id);
+    runAgentTurn.mockResolvedValue({
+      text: "You owe Maya the deck.",
+      citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
+      refused: false,
+      timings: { totalMs: 5, turns: [] },
+    });
+    const { POST } = await import("../agent/think/route");
+
+    const response = await POST(
+      makeThinkRequest(
+        [
+          { role: "system", content: "You are Headroom." },
+          { role: "user", content: "what do I owe?" },
+        ],
+        "valid",
+      ),
     );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.choices[0].message).toEqual({
+      role: "assistant",
+      content: "You owe Maya the deck.",
+    });
+    expect(runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ transcript: "what do I owe?" }),
+    );
+  });
+
+  it("makes the turn's citations available for the client to poll", async () => {
+    verifyThinkToken.mockReturnValue(USER_ROW.id);
+    runAgentTurn.mockResolvedValue({
+      text: "You owe Maya the deck.",
+      citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
+      refused: false,
+      timings: { totalMs: 5, turns: [] },
+    });
+    const { POST } = await import("../agent/think/route");
+
+    await POST(makeThinkRequest([{ role: "user", content: "what do I owe?" }], "valid"));
+    const { GET } = await import("../agent/think/citations/route");
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    const response = await GET();
+
+    expect(AgentTurnCitationsResponse.parse(await response.json())).toEqual({
+      citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
+    });
+  });
+});
+
+describe("GET /api/v1/agent/think/citations", () => {
+  it("returns 401 when signed out", async () => {
+    getOrCreateUser.mockResolvedValue(null);
+    const { GET } = await import("../agent/think/citations/route");
+
+    expect((await GET()).status).toBe(401);
+  });
+
+  it("returns an empty list when nothing was recorded for that user", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    const { GET } = await import("../agent/think/citations/route");
+
+    const response = await GET();
+
+    expect(AgentTurnCitationsResponse.parse(await response.json())).toEqual({ citations: [] });
+  });
+
+  it("clears citations once served, so a stale turn doesn't resurface", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    recordCitations(USER_ROW.id, [{ artifactId: "a1", quote: "I owe Maya the deck" }]);
+    const { GET } = await import("../agent/think/citations/route");
+
+    await GET();
+    const second = await GET();
+
+    expect(AgentTurnCitationsResponse.parse(await second.json())).toEqual({ citations: [] });
   });
 });
