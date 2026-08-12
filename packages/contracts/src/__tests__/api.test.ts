@@ -3,6 +3,7 @@ import {
   ApiErrorResponse,
   HealthResponse,
   MeResponse,
+  TranscriptionResponse,
   UserSummary,
   UsersResponse,
 } from "../index";
@@ -60,6 +61,27 @@ describe("HealthResponse", () => {
 
   it("rejects an error shape with no message", () => {
     expect(HealthResponse.safeParse({ status: "error", db: "unreachable" }).success).toBe(false);
+  });
+});
+
+describe("TranscriptionResponse", () => {
+  it("accepts an in-progress transcript with no artifact yet", () => {
+    const body = { transcript: "hey so I was thinking", isFinal: false };
+    expect(TranscriptionResponse.parse(body)).toEqual(body);
+  });
+
+  it("accepts a final transcript with its artifact id", () => {
+    const body = {
+      transcript: "hey so I was thinking we should ship this",
+      isFinal: true,
+      artifactId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    };
+    expect(TranscriptionResponse.parse(body)).toEqual(body);
+  });
+
+  it("rejects a non-uuid artifactId", () => {
+    const body = { transcript: "hi", isFinal: true, artifactId: "not-a-uuid" };
+    expect(TranscriptionResponse.safeParse(body).success).toBe(false);
   });
 });
 

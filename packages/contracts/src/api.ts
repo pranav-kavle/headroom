@@ -25,6 +25,13 @@ export const UsersResponse = z.object({
 });
 export type UsersResponse = z.infer<typeof UsersResponse>;
 
+export const TranscriptionResponse = z.object({
+  transcript: z.string(),
+  isFinal: z.boolean(),
+  artifactId: z.uuid().optional(),
+});
+export type TranscriptionResponse = z.infer<typeof TranscriptionResponse>;
+
 export const HealthResponse = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("ok"),
