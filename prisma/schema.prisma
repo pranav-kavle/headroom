@@ -1,10 +1,10 @@
 // Headroom — Prisma schema
 //
-// Surviving models from the pre-pivot cashflow schema: the agent-run audit
-// chain, kept because it is already the right shape for the Ledger. See
+// Surviving models from the pre-pivot schema: the agent-run audit chain, kept
+// because it is already the right shape for the Ledger. See
 // docs/superpowers/specs/2026-08-11-headroom-commitments-design.md §5.
 // The life graph (Person, Commitment, Artifact, ...) is not modeled here yet
-// — it lands in a later implementation plan.
+// — it lands in the life-graph implementation plan.
 
 generator client {
   provider = "prisma-client"
@@ -107,10 +107,10 @@ model AgentRunAttempt {
 // Feedback loop — the one surfaced decision and whether the user acted on it
 // ---------------------------------------------------------------------------
 //
-// CheckIn and RecommendationOutcome both had a required relation to the now
-// -deleted Plan model. Per the teardown plan, only the offending relation
-// fields are stripped here; the rest of each model survives mechanically
-// unchanged, ready to be re-pointed at a future Commitment/Brief model.
+// CheckIn and RecommendationOutcome both had a required relation to a model
+// deleted in the pivot. Only the offending relation fields were stripped; the
+// rest of each model survives mechanically unchanged, ready to be re-pointed
+// at a future Commitment/Brief model.
 
 enum CheckInChannel {
   ui

@@ -5,14 +5,13 @@ export function Problem() {
     <div className={styles.lpSec}>
       <div className={styles.lpInner}>
         <div className={styles.secEyebrow}>The problem</div>
-        <h2 className="serif">When income is unpredictable, every dollar has to fight for a job.</h2>
+        <h2 className="serif">Your commitments are scattered across five apps. Your capacity lives in none of them.</h2>
         <p className={styles.lead}>
-          A retainer here, an invoice that lands three weeks late there. Meanwhile
-          taxes, a runway floor, your own pay, savings and debt are all pulling at
-          the same balance. Guess high and you claw it back next month; guess low
-          and you underpay yourself all year. <b>Allocation collapses under
-          uncertainty</b> — so the honest answer to “how much can I pay myself?” is
-          usually “I don’t know.”
+          You promised a review in a PR comment, a doc by Thursday in the fourth paragraph
+          of an email thread, and a call back to someone while you were out walking. Each
+          app knows its own slice; none of them knows your week. So the thing that slips is
+          never the thing you were tracking — <b>it&rsquo;s the promise you made in prose
+          three Tuesdays ago</b> and never wrote down anywhere.
         </p>
       </div>
     </div>

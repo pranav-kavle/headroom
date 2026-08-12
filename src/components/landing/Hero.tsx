@@ -6,17 +6,19 @@ export function Hero() {
   return (
     <div className={styles.lpHero}>
       <div>
-        <div className={styles.lpEyebrow}>For Schedule C freelancers</div>
+        <div className={styles.lpEyebrow}>For people who owe more people than they can track</div>
         <h1 className="serif">
-          Know exactly how much you can <em>pay yourself.</em> Every week.
+          Know what you actually <em>owe.</em> Before it&rsquo;s late.
         </h1>
         <p className={styles.lpSub}>
-          Irregular income. Quarterly tax dread. The one question you can never
-          quite answer: <b>can I afford to pay myself this month?</b> Headroom
-          answers it — and defends the number.
+          Every commitment you&rsquo;ve made lives in a different app, and none of them know
+          how much you have left in the tank. Headroom reads your email, GitHub and
+          calendar, extracts every promise{" "}
+          <b>with a citation to exactly where you made it</b>, and tells you each morning
+          what&rsquo;s actually at risk.
         </p>
         <div className={styles.lpCta}>
-          <SignUpCta className="btn primary lg">Connect your bank</SignUpCta>
+          <SignUpCta className="btn primary lg">Connect your accounts</SignUpCta>
         </div>
       </div>
       <MockCard />

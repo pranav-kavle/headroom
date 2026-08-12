@@ -24,7 +24,7 @@ const newsreader = Newsreader({
 
 export const metadata: Metadata = {
   title: "Headroom",
-  description: "Safe-to-Pay, defended.",
+  description: "Everything you owe, weighed against what you have left.",
 };
 
 export default function RootLayout({

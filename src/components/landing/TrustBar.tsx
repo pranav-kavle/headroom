@@ -8,22 +8,22 @@ export function TrustBar() {
         <div className={styles.trustItem}>
           <ShieldIcon />
           <div>
-            <div className={styles.tk}>Reads your data. Recommends only.</div>
-            <div className={styles.tv}>It watches the accounts and advises. It never moves a dollar.</div>
+            <div className={styles.tk}>It drafts. You send.</div>
+            <div className={styles.tv}>Anything outward-facing is one tap, always. That isn&rsquo;t a setting you can switch off.</div>
           </div>
         </div>
         <div className={styles.trustItem}>
           <FileIcon />
           <div>
-            <div className={styles.tk}>Built for Schedule C.</div>
-            <div className={styles.tv}>Sole-proprietor freelancers with lumpy, unpredictable income.</div>
+            <div className={styles.tk}>Every claim carries its receipt.</div>
+            <div className={styles.tv}>A commitment is only shown if it traces to a real message — the quote, the timestamp, and a link back.</div>
           </div>
         </div>
         <div className={styles.trustItem}>
           <DocIcon />
           <div>
-            <div className={styles.tk}>Estimates you can take to your accountant.</div>
-            <div className={styles.tv}>Every figure is a range with its assumption stated — the low end is the promise.</div>
+            <div className={styles.tk}>The engine computes. The model phrases.</div>
+            <div className={styles.tv}>No date, count, or score is ever invented by a language model.</div>
           </div>
         </div>
       </div>

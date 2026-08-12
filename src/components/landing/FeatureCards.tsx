@@ -8,15 +8,16 @@ export function FeatureCards() {
         <div className={styles.lpTwo}>
           <div className={styles.featureCard}>
             <div className={styles.secEyebrow}>The AI-hard part</div>
-            <h3>Real income is messy.</h3>
+            <h3>Promises don&rsquo;t announce themselves.</h3>
             <p>
-              A Zelle payment with the memo “inv” could be a client invoice or your
-              roommate paying rent. The engine won’t bank it until the model reads
-              the evidence and you confirm.
+              &ldquo;I&rsquo;ll get you the draft by Thursday,&rdquo; buried in the fourth
+              paragraph of a thread, is a commitment. &ldquo;I&rsquo;ll take a look&rdquo;
+              is not. Headroom won&rsquo;t record one until it can quote the sentence it
+              came from — and when it isn&rsquo;t sure, it asks.
             </p>
             <div className={styles.miniTxn}>
-              <div className={styles.amt}>$4,200 · Zelle from J. Rivera</div>
-              <div className={styles.q}>memo “inv” — client income or personal?</div>
+              <div className={styles.amt}>&ldquo;I&rsquo;ll send the revised deck Thursday&rdquo;</div>
+              <div className={styles.q}>thread with Maya R. — is this a commitment?</div>
               <div className={styles.miniConf}>
                 <i />
               </div>
@@ -27,11 +28,11 @@ export function FeatureCards() {
           </div>
           <div className={`${styles.featureCard} ${styles.amber}`}>
             <div className={styles.secEyebrow} style={{ color: "var(--amber)" }}>The catch</div>
-            <h3>It sees the shortfall weeks early.</h3>
+            <h3>It sees the crunch before you do.</h3>
             <p>
-              When Acme’s $5,000 invoice slips 30 days, Headroom catches
-              the tax-and-runway squeeze before it lands — lowers your Safe-to-Pay
-              to a number you can trust, and protects the floors first.
+              Thursday has three deliverables and four hours of meetings booked over them.
+              Headroom flags the collision on Monday, while it&rsquo;s still fixable — and
+              tells you which promise to move, not just that you&rsquo;re busy.
             </p>
             <div style={{ marginTop: 20 }}>
               <SignUpCta className="btn primary">See the catch →</SignUpCta>

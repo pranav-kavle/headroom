@@ -13,7 +13,7 @@ export function LandingNav() {
         </div>
         <div>
           <div className={styles.name}>Headroom</div>
-          <div className={styles.sub}>Safe-to-Pay, defended.</div>
+          <div className={styles.sub}>Everything you owe, in one place.</div>
         </div>
       </div>
       <div className={styles.lpActions}>

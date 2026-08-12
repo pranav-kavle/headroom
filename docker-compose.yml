@@ -3,9 +3,9 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: cashflow
-      POSTGRES_PASSWORD: cashflow
-      POSTGRES_DB: cashflow_companion
+      POSTGRES_USER: headroom
+      POSTGRES_PASSWORD: headroom
+      POSTGRES_DB: headroom
     ports:
       - "5432:5432"
     volumes:

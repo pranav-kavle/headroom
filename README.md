@@ -1,113 +1,92 @@
 # Headroom
 
-The first decision engine in an **autonomous financial decision system for
-one-person and very small service businesses.** It continuously answers and
-defends one high-stakes question:
+Headroom reads GitHub, Gmail, Calendar, voice notes, and Google Health to extract
+every commitment you've made, weighs it against your real capacity, and tells you
+each morning what's actually at risk — with the work already drafted.
 
-> **How much can I safely pay myself right now?**
+> "You told Maya you'd send the revised deck Thursday. Thursday has four hours of
+> meetings on top of two other deliverables."
+> — quoted from the thread it came from, with a link back to it.
 
-```
-"$3,650 — the most you can pay yourself this period and stay tax-safe through
-Q3, with runway holding above your floor even if Acme pays 30 days late."
-```
+**The wedge is commitments vs. capacity**, not "AI chief of staff." The narrow
+claim is the testable one: *does Headroom know what you owe, and is it right?*
 
-Forward-looking (forecasts the breach, not just the past), tax-aware (estimated
-taxes set aside first), conservative (the promised number is the low end of a
-range), and explained (every figure carries its assumption).
+**Success metric:** commitments closed without opening the source app.
 
-## The problem
+## The core rule — verifiable autonomy
 
-Salaried people budget against a fixed paycheck; freelancers can't. Income is
-lumpy, and every incoming dollar is contested by obligations that move weekly —
-quarterly estimated taxes (the silent killer), runway, owner pay, debt,
-savings. When an invoice slips or a surprise cost lands, the allocation is
-silently wrong, and the freelancer either re-does the mental math or doesn't —
-and gets a tax bill they can't cover. Existing tools are dashboards built for
-fixed income: they show the past and make the user re-decide.
+1. **The engine computes. The model extracts and phrases.** No figure, date,
+   duration, count, or score is ever produced by the model.
+2. **Every claim carries provenance.** A statement about your life is only
+   utterable if it traces to a stored artifact with a quote, timestamp, and link.
+3. **The model never chooses its own autonomy tier.** Deterministic policy decides
+   what may execute.
+4. **Voice is STT → text → engine → TTS.** Never speech-to-speech.
+5. **When the engine cannot determine something, Headroom asks.**
 
-The structural wrinkle that makes this hard: a sole proprietor usually runs
-personal and business money through **one commingled account**. Telling client
-income apart from transfers, refunds, repayments, and loan proceeds is where
-every downstream number lives or dies — and it isn't solvable by rules. That's
-why the product needs AI, and why it's built for the freelancer with a messy
-account rather than only the disciplined one who least needs it.
+## Action tiers
 
-## Who it's for
+| Tier | Contents | Policy |
+|---|---|---|
+| 1 — Private, reversible | Draft replies, calendar holds, triage/labelling | Unattended, logged, undoable |
+| 2 — Outward-facing | Send a reply, decline a meeting, comment on a PR | One tap, always — not togglable |
+| 3 — Money & third parties | Purchases, bookings, cancellations | Prepared, never executed |
+| 4 — Code | Draft review comments, fix trivial issues, push a branch | Deferred |
 
-Sole-proprietor (Schedule C) freelancers with lumpy income, quarterly estimated
-taxes, no bookkeeper, and one commingled account. S-corp owners, multi-member
-entities, and anyone needing actual filing are explicitly out of scope for v1 —
-a Schedule C assumption would silently produce the wrong number for them.
+Tier 1 autonomy turns on only once extraction clears ≥90% precision on
+`owed_by_me`.
 
-## How it works
+## Architecture
 
-**One orchestrating agent, one deterministic engine, a handful of skills.**
-Financial arithmetic — allocation, floor enforcement, tax math, projections —
-must be exactly reproducible, so it lives entirely in a deterministic engine,
-never in the model. The agent owns the messy boundary between the real world
-and that engine: interpreting triggers and user messages, classifying
-ambiguous transactions, deciding which single decision (if any) is worth
-surfacing, and narrating the result.
+One Next.js deployment. The client↔server contract is separated by rule, not by
+infrastructure:
 
 ```
-TRIGGERS                    ORCHESTRATING AGENT               MCP SOURCES
- cron schedule      ──▶      • interpret trigger/message   ──▶ Aggregator (bank data)
- txn webhook        ──▶      • classify unclear txns       ──▶ Tax-rule (rates, due dates)
- manual feedback    ──▶      • decide: surface or stay quiet──▶ Expected-income (invoices)
- threshold breach   ──▶      • compose the one alert        ──▶ Financial State + Priority
-                                                                 Engine (★ custom, deterministic)
+src/app/(app)/          PWA UI — renders props, holds no business logic
+src/app/api/v1/…        the only client<->server surface
+packages/contracts/     Zod schemas + inferred types, shared
+packages/engine-mcp/    deterministic engine, MCP tools, tested
+packages/graph/         Prisma + graph queries — the only Prisma importer
+packages/tokens/        design tokens as plain JS objects
 ```
 
-**Skills the agent wields** (none of which compute or override a financial
-figure):
+Three of these boundaries are enforced by tests in `tests/architecture/`, not by
+convention.
 
-| Skill | Role |
+## Getting started
+
+```bash
+npm install
+docker compose up -d          # Postgres
+npm run prisma:migrate        # apply migrations
+npm run dev                   # http://localhost:3000
+```
+
+Copy `.env.example` to `.env` and fill in the Clerk keys and
+`TOKEN_ENCRYPTION_KEY`.
+
+## Commands
+
+| Command | What it does |
 |---|---|
-| **Transaction Interpreter** | Classifies ambiguous deposits and expenses with a confidence score + evidence — the genuinely AI-hard task |
-| **Cashflow Synthesizer** | Deterministic engine call + a plain-language explanation of the result |
-| **Re-planner** | The agent re-invoking the Synthesizer on changed state and surfacing the one decision |
-| **Materiality Evaluator** | Deterministic-first gate deciding whether a change deserves the user's attention (earned silence) |
-| **Alert Composer** | Turns engine output into one concise user message |
-| **Expected-Income Interpreter** | Parses free-text signal ("Acme paid late") into a structured state change |
-| **Document Intake** *(deferred)* | Vision/OCR extraction from statements — designed for, not built for v1 |
+| `npm test` | Every Vitest project: app, contracts, graph, tokens, engine-mcp |
+| `npm run build` | Production build (standalone output) |
+| `npm run lint` | ESLint |
+| `npm run tokens:css` | Regenerate `src/app/tokens.css` from `packages/tokens` |
+| `npm run prisma:generate` | Regenerate the Prisma client into `packages/graph` |
+| `npm run prisma:migrate` | Create and apply a migration |
 
-The model never invents or overrides a financial fact — it proposes, the
-engine computes, and low confidence escalates to the user. Bias to ask on
-high-magnitude, low-confidence deposits: mislabeling a transfer as income
-inflates the number and can push a user into a tax hole.
-
-## Scope
-
-**In scope:** bank connect + backfill, AI income classification with one-tap
-confirm, deterministic priority waterfall (Taxes → Runway → Pay → Savings →
-Debt) with hard floors, conservative Schedule C tax estimate, the Safe-to-Pay
-Number with range and reasoning, background re-planning, earned attention
-(one decision or silence).
-
-**Out of scope for now:** money movement (read + recommend only), live
-invoicing integrations, S-corp support, real bank data on stage, a full
-multi-state tax matrix, learned/ML spend prediction, broader decision-system
-features (collections, hiring, pricing).
-
-## Trust & safety
-
-Read + recommend only — never moves money, files, or gives advice. Every
-figure is a range with its assumption stated; the promised number is always
-the conservative end. Not financial or tax advice — estimates to confirm with
-an accountant.
+Postgres must be running for the `graph` and `engine-mcp` test projects.
 
 ## Docs
 
 | Doc | What's in it |
 |---|---|
-| [Executive one-pager](docs/onepager.md) | The one-page pitch: problem, hero output, solution, differentiation |
-| [PRD v2](docs/PRD-v2.md) | Full product requirements, canonical demo scenario, acceptance bars, architecture, milestones |
-| [AI agent design](docs/ai-agents.md) | Agent/engine/skills architecture and the AI-vs-deterministic boundary in detail |
-| [Data model](docs/data-model.md) | Entity-relationship diagram: versioned state, transaction classification, and per-plan input lineage |
-| [Personas](docs/personas.md) | Primary and secondary user archetypes, market frame, what's grounded vs. assumed |
-| [Falsifiable hypotheses](docs/hypotheses.md) | Every assumption behind the product, written to be killed, with thresholds and pre-committed decisions |
+| [Design doc](docs/superpowers/specs/2026-08-11-headroom-commitments-design.md) | The whole product: life graph, extraction eval bar, action tiers, phasing |
+| [Plans](docs/superpowers/plans/) | Implementation plans, one per phase |
+| [Prototype](prototype/headroom.html) | All 11 screens, static |
 
 ## Status
 
-In build toward a capstone Demo Day (2026-08-14). See the [PRD](docs/PRD-v2.md)
-for the acceptance bars, milestones, and demo script.
+v0 in build: prove extraction is good enough to trust. No push, no voice, no
+actions until it is.

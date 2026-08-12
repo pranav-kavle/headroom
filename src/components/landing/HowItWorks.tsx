@@ -5,24 +5,24 @@ export function HowItWorks() {
     <section id="how" className={`${styles.lpSec} ${styles.tint}`}>
       <div className={styles.lpInner}>
         <div className={styles.secEyebrow}>How it works</div>
-        <h2 className="serif">One question, answered continuously.</h2>
+        <h2 className="serif">Read, weigh, and surface only what needs you.</h2>
         <div className={styles.steps}>
           <div className={styles.step}>
             <div className={styles.sn}>1</div>
-            <h3>Connect &amp; classify</h3>
-            <p>It reads your bank data and classifies real income — even the messy deposits. Unsure ones come to you for a one-tap confirm.</p>
+            <h3>Read &amp; extract</h3>
+            <p>It reads your email, GitHub and calendar and pulls out every promise you made — each one quoted from where you actually made it. Unsure ones come to you for a one-tap confirm.</p>
             <span className={styles.tag}>AI · judgment</span>
           </div>
           <div className={styles.step}>
             <div className={styles.sn}>2</div>
-            <h3>Solve the waterfall</h3>
-            <p>A deterministic engine owns the math: taxes, then runway floor, then pay, then savings, then debt. Same inputs, same answer — every time.</p>
+            <h3>Weigh against capacity</h3>
+            <p>A deterministic engine owns the arithmetic: hours promised against hours free, what&rsquo;s due when, and what&rsquo;s blocking what. Same inputs, same answer — every time.</p>
             <span className={styles.tag}>Engine · arithmetic</span>
           </div>
           <div className={styles.step}>
             <div className={styles.sn}>3</div>
-            <h3>Re-plan &amp; surface one thing</h3>
-            <p>It re-plans in the background as reality changes and surfaces the single decision worth your attention — or stays silent.</p>
+            <h3>Surface what&rsquo;s at risk</h3>
+            <p>Each morning it surfaces only the commitments that need you, with the reply already drafted — or it stays quiet.</p>
             <span className={styles.tag}>Earned attention</span>
           </div>
         </div>
