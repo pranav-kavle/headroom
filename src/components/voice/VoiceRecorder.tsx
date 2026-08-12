@@ -1,125 +1,139 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { TranscriptionResponse } from "@headroom/contracts";
-import { pickAudioMimeType } from "@/lib/media-format";
+import { AgentCitation, AgentTurnCitationsResponse } from "@headroom/contracts";
+import { createVoiceSession, type VoiceSession } from "@/lib/voice-session";
 import styles from "./VoiceRecorder.module.css";
 
-// Chunked-POST streaming, not a persistent connection — design doc §11 port
-// rule 1 keeps /api/v1 route handlers as the only client<->server surface.
-// The client resends the whole clip recorded so far every tick; the server
-// re-transcribes it and returns its current best guess.
-const RESEND_INTERVAL_MS = 1500;
+// Tap-to-start / tap-to-end, not push-to-talk — design doc
+// 2026-08-12-deepgram-voice-agent-design.md §6. Barge-in needs the mic open
+// *while the agent is speaking*, which a press-and-hold gesture can't
+// express, so the mic stays open for the whole session rather than only
+// while a finger is on the button.
+type Status = "idle" | "connecting" | "listening" | "speaking" | "error";
 
-type Status = "idle" | "recording" | "sending" | "saved" | "error";
+const LABELS: Record<Status, string> = {
+  idle: "Tap to talk",
+  connecting: "Connecting",
+  listening: "Listening",
+  speaking: "Speaking",
+  error: "Something went wrong",
+};
+
+interface TurnEntry {
+  role: "user" | "assistant";
+  content: string;
+  citations: AgentCitation[];
+}
+
+async function fetchLatestCitations(): Promise<AgentCitation[]> {
+  // §6: citations for a turn are produced inside /api/v1/agent/think and
+  // never travel over Deepgram's socket, so they're fetched separately
+  // rather than read off the conversation-text event.
+  const response = await fetch("/api/v1/agent/think/citations");
+  if (!response.ok) return [];
+  return AgentTurnCitationsResponse.parse(await response.json()).citations;
+}
 
 export function VoiceRecorder() {
   const [status, setStatus] = useState<Status>("idle");
-  const [transcript, setTranscript] = useState("");
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const mimeTypeRef = useRef("audio/webm");
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sendingRef = useRef(false);
+  const [turns, setTurns] = useState<TurnEntry[]>([]);
+  const sessionRef = useRef<VoiceSession | null>(null);
 
-  const sendClip = useCallback(async (final: boolean) => {
-    if (sendingRef.current) return;
-    if (chunksRef.current.length === 0) return;
+  const handleConversationText = useCallback((message: { role: string; content: string }) => {
+    const role: "user" | "assistant" = message.role === "assistant" ? "assistant" : "user";
+    let insertedIndex = -1;
+    setTurns((prev) => {
+      insertedIndex = prev.length;
+      return [...prev, { role, content: message.content, citations: [] }];
+    });
 
-    sendingRef.current = true;
-    try {
-      const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
-      const response = await fetch(`/api/v1/voice/transcriptions${final ? "?final=true" : ""}`, {
-        method: "POST",
-        headers: { "content-type": mimeTypeRef.current },
-        body: blob,
+    if (role === "assistant") {
+      void fetchLatestCitations().then((citations) => {
+        if (citations.length === 0) return;
+        setTurns((prev) => {
+          if (insertedIndex < 0 || insertedIndex >= prev.length) return prev;
+          const next = [...prev];
+          next[insertedIndex] = { ...next[insertedIndex], citations };
+          return next;
+        });
       });
-
-      if (!response.ok) {
-        setStatus("error");
-        return;
-      }
-
-      const body = TranscriptionResponse.parse(await response.json());
-      setTranscript(body.transcript);
-      if (body.isFinal) setStatus("saved");
-    } finally {
-      sendingRef.current = false;
     }
   }, []);
 
-  const startRecording = useCallback(async () => {
-    if (status === "recording") return;
+  const stop = useCallback(() => {
+    sessionRef.current?.stop();
+    sessionRef.current = null;
+    setStatus("idle");
+  }, []);
 
-    setStatus("recording");
-    setTranscript("");
-    chunksRef.current = [];
+  const start = useCallback(() => {
+    // Deliberately not awaited before calling createVoiceSession — that call
+    // has to happen synchronously inside this tap handler, or the network
+    // round trip for the Deepgram token breaks the gesture-context link
+    // AgentPlayer needs to unlock iOS audio (voice-session.ts, §9 gotcha #1).
+    setStatus("connecting");
+    setTurns([]);
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = pickAudioMimeType((type) => MediaRecorder.isTypeSupported(type));
-      if (mimeType) mimeTypeRef.current = mimeType;
-
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
-      };
-      recorder.start();
-      recorderRef.current = recorder;
-
-      intervalRef.current = setInterval(() => {
-        void sendClip(false);
-      }, RESEND_INTERVAL_MS);
-    } catch {
-      setStatus("error");
-    }
-  }, [sendClip, status]);
-
-  const stopRecording = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
-    const recorder = recorderRef.current;
-    if (!recorder || recorder.state === "inactive") return;
-
-    setStatus("sending");
-    recorder.addEventListener(
-      "stop",
-      () => {
-        recorder.stream.getTracks().forEach((track) => track.stop());
-        void sendClip(true);
+    void createVoiceSession(
+      {
+        onConversationText: handleConversationText,
+        onAgentStartedSpeaking: () => setStatus("speaking"),
+        onUserStartedSpeaking: () => setStatus("listening"),
+        onDisconnected: () => {
+          sessionRef.current = null;
+          setStatus("idle");
+        },
+        onError: () => setStatus("error"),
       },
-      { once: true },
-    );
-    recorder.stop();
-  }, [sendClip]);
+      { thinkEndpointUrl: new URL("/api/v1/agent/think", window.location.origin).toString() },
+    )
+      .then(async (session) => {
+        sessionRef.current = session;
+        await session.start();
+        setStatus("listening");
+      })
+      .catch(() => setStatus("error"));
+  }, [handleConversationText]);
 
-  const label =
-    status === "recording"
-      ? "Listening"
-      : status === "sending"
-        ? "Transcribing"
-        : status === "saved"
-          ? "Saved"
-          : status === "error"
-            ? "Something went wrong"
-            : "Hold to talk";
+  const toggle = useCallback(() => {
+    if (status === "idle" || status === "error") {
+      start();
+    } else {
+      stop();
+    }
+  }, [status, start, stop]);
+
+  const sessionActive = status === "connecting" || status === "listening" || status === "speaking";
 
   return (
     <div className={styles.sheet}>
-      <div className={styles.orb} data-active={status === "recording"} />
-      <div className={styles.listening}>{label}</div>
-      <p className={styles.transcript}>{transcript || "…"}</p>
+      <div className={styles.orb} data-active={sessionActive} />
+      <div className={styles.listening}>{LABELS[status]}</div>
+
+      <div className={styles.log}>
+        {turns.map((turn, index) => (
+          <div key={index} className={turn.role === "assistant" ? styles.reply : styles.transcript}>
+            <p>{turn.content}</p>
+            {/* Design doc §9: voice carries the narrative, the screen carries
+                the evidence — voice is never the sole channel for a claim. */}
+            {turn.citations.length > 0 && (
+              <ul className={styles.citations}>
+                {turn.citations.map((citation) => (
+                  <li key={citation.artifactId}>&ldquo;{citation.quote}&rdquo;</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+
       <div className={styles.micLive}>
         <button
           type="button"
           className={styles.micLg}
-          aria-pressed={status === "recording"}
-          onPointerDown={() => void startRecording()}
-          onPointerUp={stopRecording}
-          onPointerLeave={() => status === "recording" && stopRecording()}
+          aria-pressed={sessionActive}
+          onClick={toggle}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round">
             <rect x="9" y="2.5" width="6" height="11" rx="3" />
@@ -127,9 +141,7 @@ export function VoiceRecorder() {
             <path d="M12 17.5V21" />
           </svg>
         </button>
-        <div className={styles.micCap}>
-          {status === "recording" ? "Release to send" : "Hold and speak"}
-        </div>
+        <div className={styles.micCap}>{sessionActive ? "Tap to end" : "Tap to start talking"}</div>
       </div>
     </div>
   );

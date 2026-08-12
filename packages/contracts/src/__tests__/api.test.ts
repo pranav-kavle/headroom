@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  AgentTokenResponse,
+  AgentTurnCitationsResponse,
   ApiErrorResponse,
   HealthResponse,
   MeResponse,
-  TranscriptionResponse,
   UserSummary,
   UsersResponse,
 } from "../index";
@@ -64,24 +65,30 @@ describe("HealthResponse", () => {
   });
 });
 
-describe("TranscriptionResponse", () => {
-  it("accepts an in-progress transcript with no artifact yet", () => {
-    const body = { transcript: "hey so I was thinking", isFinal: false };
-    expect(TranscriptionResponse.parse(body)).toEqual(body);
-  });
-
-  it("accepts a final transcript with its artifact id", () => {
+describe("AgentTokenResponse", () => {
+  it("accepts Deepgram's connection token alongside the signed think token", () => {
     const body = {
-      transcript: "hey so I was thinking we should ship this",
-      isFinal: true,
-      artifactId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      deepgramAccessToken: "dg-jwt",
+      deepgramExpiresInSeconds: 30,
+      thinkAuthToken: "signed-token",
     };
-    expect(TranscriptionResponse.parse(body)).toEqual(body);
+    expect(AgentTokenResponse.parse(body)).toEqual(body);
   });
 
-  it("rejects a non-uuid artifactId", () => {
-    const body = { transcript: "hi", isFinal: true, artifactId: "not-a-uuid" };
-    expect(TranscriptionResponse.safeParse(body).success).toBe(false);
+  it("rejects a response missing the think token", () => {
+    const body = { deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30 };
+    expect(AgentTokenResponse.safeParse(body).success).toBe(false);
+  });
+});
+
+describe("AgentTurnCitationsResponse", () => {
+  it("accepts a list of citations", () => {
+    const body = { citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }] };
+    expect(AgentTurnCitationsResponse.parse(body)).toEqual(body);
+  });
+
+  it("accepts an empty list when nothing was recorded", () => {
+    expect(AgentTurnCitationsResponse.parse({ citations: [] }).citations).toEqual([]);
   });
 });
 
