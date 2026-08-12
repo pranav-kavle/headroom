@@ -1,8 +1,10 @@
 .screen {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   background: var(--hr-bg);
-  padding: 22px 24px 48px;
+  padding: calc(22px + env(safe-area-inset-top)) 24px 48px;
 }
 
 .eyebrow {

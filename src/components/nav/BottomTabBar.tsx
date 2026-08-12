@@ -2,7 +2,7 @@ import Link from "next/link";
 import styles from "./BottomTabBar.module.css";
 
 const TABS = [
-  { id: "brief", label: "Brief", icon: <path d="M4 6h16M4 12h11M4 18h7" /> },
+  { id: "brief", label: "Brief", href: "/brief", icon: <path d="M4 6h16M4 12h11M4 18h7" /> },
   {
     id: "commitments",
     label: "Commitments",
@@ -25,44 +25,37 @@ const TABS = [
       </>
     ),
   },
+  {
+    id: "controls",
+    label: "Controls",
+    href: "/controls",
+    // Sliders, not a gear: this screen is where you decide what Headroom may
+    // do on its own, which is closer to tuning than to configuring.
+    icon: (
+      <>
+        <path d="M4 8h10M18 8h2M4 16h4M12 16h8" />
+        <circle cx="16" cy="8" r="2" />
+        <circle cx="10" cy="16" r="2" />
+      </>
+    ),
+  },
 ] as const;
 
 export type TabId = (typeof TABS)[number]["id"];
 
-// Brief isn't built yet, so its tab renders disabled. Commitments and Ledger
-// are real destinations now — `active` highlights whichever one hosts this bar.
+// All three tabs are real destinations — `active` highlights whichever one
+// hosts this bar.
 export function BottomTabBar({ active }: { active?: TabId } = {}) {
   return (
     <div className={styles.bar}>
-      {TABS.map((tab) => {
-        const icon = (
+      {TABS.map((tab) => (
+        <Link key={tab.id} href={tab.href} className={styles.tab} data-active={tab.id === active}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round">
             {tab.icon}
           </svg>
-        );
-
-        if ("href" in tab) {
-          return (
-            <Link key={tab.id} href={tab.href} className={styles.tab} data-active={tab.id === active}>
-              {icon}
-              {tab.label}
-            </Link>
-          );
-        }
-
-        return (
-          <div
-            key={tab.id}
-            className={`${styles.tab} ${styles.disabled}`}
-            data-active={tab.id === active}
-            aria-disabled="true"
-            title="Coming soon"
-          >
-            {icon}
-            {tab.label}
-          </div>
-        );
-      })}
+          {tab.label}
+        </Link>
+      ))}
     </div>
   );
 }

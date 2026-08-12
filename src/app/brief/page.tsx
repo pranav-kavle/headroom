@@ -4,9 +4,9 @@ import { getOrCreateUser } from "@/lib/auth";
 import { AppFrame } from "@/components/nav/AppFrame";
 import { BottomTabBar } from "@/components/nav/BottomTabBar";
 import { VoiceOverlay } from "@/components/voice/VoiceOverlay";
-import { CommitmentsView } from "@/components/commitments/CommitmentsView";
+import { BriefView } from "@/components/brief/BriefView";
 
-export default async function CommitmentsPage() {
+export default async function BriefPage() {
   const user = await getOrCreateUser();
   if (!user) {
     redirect("/sign-in");
@@ -16,9 +16,9 @@ export default async function CommitmentsPage() {
 
   return (
     <AppFrame>
-      <CommitmentsView commitments={commitments} />
+      <BriefView commitments={commitments} />
       <VoiceOverlay />
-      <BottomTabBar active="commitments" />
+      <BottomTabBar active="brief" />
     </AppFrame>
   );
 }

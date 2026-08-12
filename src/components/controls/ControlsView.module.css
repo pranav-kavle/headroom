@@ -1,8 +1,21 @@
+/* No top bar on tab screens, so the status-bar inset lands here instead. The
+   tab bar carries the bottom inset. */
 .screen {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   background: var(--hr-bg);
-  padding: 22px 24px 48px;
+  padding: calc(22px + env(safe-area-inset-top)) 24px 48px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 640;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--hr-ink-3);
+  margin-bottom: 16px;
 }
 
 .acctHead {
@@ -210,4 +223,9 @@
   font-weight: 640;
   color: var(--hr-red);
   cursor: pointer;
+  transition: background 0.1s ease-out;
+}
+
+.signOut:active {
+  background: var(--hr-red-bg);
 }

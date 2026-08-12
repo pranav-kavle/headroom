@@ -1,0 +1,41 @@
+.wrap {
+  position: fixed;
+  right: 20px;
+  /* Clears the tab bar, which now grows by the home-indicator inset. */
+  bottom: calc(104px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 20;
+}
+
+.button {
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--hr-violet);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 22px rgba(91, 79, 233, 0.34), 0 2px 6px rgba(91, 79, 233, 0.2);
+  cursor: pointer;
+  transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
+}
+
+.button:active {
+  transform: scale(0.92);
+  box-shadow: 0 4px 12px rgba(91, 79, 233, 0.3), 0 1px 3px rgba(91, 79, 233, 0.2);
+}
+
+.button svg {
+  width: 21px;
+  height: 21px;
+}
+
+.hint {
+  font-size: 9.5px;
+  color: var(--hr-ink-3);
+  letter-spacing: 0.02em;
+}

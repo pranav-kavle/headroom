@@ -2,9 +2,12 @@ import { redirect } from "next/navigation";
 import { listConnectorCursors } from "@headroom/graph";
 import { getOrCreateUser } from "@/lib/auth";
 import { AppFrame } from "@/components/nav/AppFrame";
-import { AccountView } from "@/components/account/AccountView";
+import { BottomTabBar } from "@/components/nav/BottomTabBar";
+import { ControlsView } from "@/components/controls/ControlsView";
 
-export default async function AccountPage() {
+// No VoiceOverlay here: the FAB sits bottom-right, directly over this screen's
+// column of toggles.
+export default async function ControlsPage() {
   const user = await getOrCreateUser();
   if (!user) {
     redirect("/sign-in");
@@ -14,7 +17,8 @@ export default async function AccountPage() {
 
   return (
     <AppFrame>
-      <AccountView email={user.email} sources={sources} />
+      <ControlsView email={user.email} sources={sources} />
+      <BottomTabBar active="controls" />
     </AppFrame>
   );
 }

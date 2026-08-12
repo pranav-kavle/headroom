@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { CommitmentRow } from "@headroom/graph";
 import { formatShortDate, isWithinDays, sourceLabel } from "@/lib/format";
+import { isNeedsYou, isOnTrack, isWaitingOnOthers } from "@/lib/commitment-groups";
 import styles from "./CommitmentsView.module.css";
 
 const SEGMENTS = ["All", "Needs you", "Waiting on others", "Done"] as const;
@@ -17,9 +18,9 @@ function matchesSegment(commitment: CommitmentRow, segment: Segment): boolean {
     case "All":
       return !closed;
     case "Needs you":
-      return commitment.direction === "owed_by_me" && (commitment.status === "at_risk" || commitment.status === "overdue");
+      return isNeedsYou(commitment);
     case "Waiting on others":
-      return commitment.direction === "owed_to_me" && !closed;
+      return isWaitingOnOthers(commitment);
     case "Done":
       return commitment.status === "fulfilled";
   }
@@ -59,7 +60,7 @@ export function CommitmentsView({ commitments }: { commitments: CommitmentRow[] 
     return {
       open: open.length,
       needsYou: open.filter((c) => matchesSegment(c, "Needs you")).length,
-      onTrack: open.filter((c) => c.direction === "owed_by_me" && c.status === "open").length,
+      onTrack: open.filter(isOnTrack).length,
       waiting: open.filter((c) => matchesSegment(c, "Waiting on others")).length,
     };
   }, [commitments]);
