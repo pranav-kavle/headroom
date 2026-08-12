@@ -15,7 +15,12 @@ WORKDIR /src
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
+# npm ci needs every workspace manifest present, not just the root one.
 COPY package*.json ./
+COPY packages/contracts/package.json ./packages/contracts/
+COPY packages/engine-mcp/package.json ./packages/engine-mcp/
+COPY packages/graph/package.json ./packages/graph/
+COPY packages/tokens/package.json ./packages/tokens/
 RUN npm ci
 COPY . .
 RUN npx prisma generate && npm run build

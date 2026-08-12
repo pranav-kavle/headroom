@@ -8,7 +8,7 @@
 
 generator client {
   provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  output   = "../packages/graph/src/generated/prisma"
 }
 
 datasource db {
