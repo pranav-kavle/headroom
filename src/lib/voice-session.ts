@@ -68,6 +68,15 @@ export function buildAgentSettings(options: {
   };
 }
 
+// AgentSession only tells Deepgram what rate to actually use if `audio.*` is
+// explicitly set — omit it and Deepgram picks its own default while
+// AgentMicrophone/AgentPlayer still assume 16kHz in / 24kHz out, decoding
+// every chunk at the wrong rate regardless of what that default turns out to
+// be. Pinning both sides to the same constants removes the ambiguity outright
+// rather than relying on defaults matching by coincidence.
+const MIC_SAMPLE_RATE = 16_000;
+const SPEAK_SAMPLE_RATE = 24_000;
+
 async function fetchAgentToken(fetchImpl: typeof fetch): Promise<AgentTokenResponse> {
   const response = await fetchImpl("/api/v1/voice/agent-token", { method: "POST" });
   if (!response.ok) {
@@ -89,7 +98,7 @@ export async function createVoiceSession(
   options: CreateVoiceSessionOptions,
 ): Promise<VoiceSession> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const player = new AgentPlayer();
+  const player = new AgentPlayer({ sampleRate: SPEAK_SAMPLE_RATE });
   player.queue(SILENT_FRAME);
 
   const initialToken = await fetchAgentToken(fetchImpl);
@@ -100,9 +109,15 @@ export async function createVoiceSession(
       thinkEndpointUrl: options.thinkEndpointUrl,
       thinkAuthToken: initialToken.thinkAuthToken,
     }),
+    audio: {
+      input: { encoding: "linear16", sampleRate: MIC_SAMPLE_RATE },
+      output: { encoding: "linear16", sampleRate: SPEAK_SAMPLE_RATE },
+    },
   });
 
-  const microphone = new AgentMicrophone((frame) => session.sendAudio(frame));
+  const microphone = new AgentMicrophone((frame) => session.sendAudio(frame), {
+    sampleRate: MIC_SAMPLE_RATE,
+  });
 
   session.on("audio", (chunk) => player.queue(chunk));
   session.on("user-started-speaking", () => {
