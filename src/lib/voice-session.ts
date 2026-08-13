@@ -56,9 +56,12 @@ const LISTEN_PROVIDER = {
   model: "flux-general-en",
   // Above Deepgram's defaults (0.7 / 5000ms) — richer asks ("what's the
   // weather, and is my flight on time") mean more mid-sentence pauses, so a
-  // little extra patience here beats cutting the user off.
+  // little extra patience here beats cutting the user off. eot_timeout_ms is
+  // deliberately short of the full patience budget (bug 8): a plain 7000ms
+  // made every utterance, including a short "hey", wait as long as a
+  // genuinely ambiguous one before the model was even called.
   eot_threshold: 0.8,
-  eot_timeout_ms: 7000,
+  eot_timeout_ms: 5800,
 };
 
 export function buildAgentSettings(options: {
@@ -142,9 +145,22 @@ export async function createVoiceSession(
     },
   });
 
-  const microphone = new AgentMicrophone((frame) => session.sendAudio(frame), {
-    sampleRate: MIC_SAMPLE_RATE,
-  });
+  // Bugs 1/2: the mic stays open for the whole session (barge-in, above), but
+  // AgentPlayer plays TTS through a raw Web Audio destination rather than an
+  // <audio> element, and browser echo-cancellation isn't reliable for that —
+  // the agent's own voice can get picked back up as if the user were
+  // talking, both cutting its own reply off early (via the barge-in
+  // interrupt below) and getting transcribed as a real turn. Dropping
+  // outgoing frames while the agent's audio is actually playing removes the
+  // self-echo source; the trade-off is that true voice barge-in no longer
+  // works — tap-to-end is still available while the agent is speaking.
+  let micGated = false;
+  const microphone = new AgentMicrophone(
+    (frame) => {
+      if (!micGated) session.sendAudio(frame);
+    },
+    { sampleRate: MIC_SAMPLE_RATE },
+  );
 
   let fillerTimer: ReturnType<typeof setTimeout> | undefined;
   const cancelFiller = () => {
@@ -166,7 +182,11 @@ export async function createVoiceSession(
   });
   session.on("agent-started-speaking", () => {
     cancelFiller();
+    micGated = true;
     events.onAgentStartedSpeaking?.();
+  });
+  session.on("agent-audio-done", () => {
+    micGated = false;
   });
   session.on("conversation-text", (message) =>
     events.onConversationText?.({ role: message.role, content: message.content }),

@@ -96,6 +96,12 @@ describe("SYSTEM_PROMPT", () => {
     expect(SYSTEM_PROMPT).toMatch(/quote/i);
   });
 
+  // Bug 6: the prompt had no tone guidance at all, and the default read as
+  // flat/robotic rather than the warm, energetic assistant this is meant to be.
+  it("asks for a warm, energetic tone rather than leaving delivery unspecified", () => {
+    expect(SYSTEM_PROMPT).toMatch(/warm|energetic|upbeat/i);
+  });
+
   // Core rule 2 scopes provenance to claims about the user's life — it was
   // never a ban on conversation in general. The old prompt's "you have
   // exactly two jobs" framing over-applied it, making ordinary chat feel

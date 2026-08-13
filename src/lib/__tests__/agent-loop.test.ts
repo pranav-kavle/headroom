@@ -130,6 +130,47 @@ describe("runAgentTurn", () => {
     expect((client.create as ReturnType<typeof vi.fn>).mock.calls.length).toBeLessThanOrEqual(5);
   });
 
+  // Bug 9/10: nothing bounded how long a model call could take, so a hung
+  // Anthropic request stalled the whole voice turn indefinitely with no
+  // user-facing signal at all.
+  it("returns a graceful message rather than hanging forever if the model call never resolves", async () => {
+    vi.useFakeTimers();
+    try {
+      const hangingClient: MessageCreator = { create: () => new Promise(() => {}) };
+
+      const resultPromise = runAgentTurn({
+        transcript: "hello",
+        context: CONTEXT,
+        client: hangingClient,
+        tools: [echoTool],
+      });
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      const result = await resultPromise;
+
+      expect(result.text).toMatch(/trouble|try again/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns a graceful message instead of throwing when the model call itself fails", async () => {
+    const failingClient: MessageCreator = {
+      create: async () => {
+        throw new Error("network blip");
+      },
+    };
+
+    const result = await runAgentTurn({
+      transcript: "hello",
+      context: CONTEXT,
+      client: failingClient,
+      tools: [echoTool],
+    });
+
+    expect(result.text).toMatch(/trouble|try again/i);
+  });
+
   it("records per-leg timings so the latency budget is measured, not guessed", async () => {
     const result = await runAgentTurn({
       transcript: "what do I owe?",
