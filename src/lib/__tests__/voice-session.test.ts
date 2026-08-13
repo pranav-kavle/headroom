@@ -51,6 +51,21 @@ describe("buildAgentSettings", () => {
     expect(provider.eot_threshold).toBeGreaterThan(0.7);
     expect(provider.eot_timeout_ms).toBeGreaterThan(5000);
   });
+
+  // Bug 8: the full 7000ms timeout above made every utterance — including a
+  // short, unambiguous "hey" — wait as long as a genuinely ambiguous
+  // mid-sentence pause before /api/v1/agent/think is even called. Capping
+  // the timeout well under that keeps most of the patience for long asks
+  // without stalling a greeting for seconds.
+  it("keeps the end-of-turn timeout well short of its full patience budget, so short utterances aren't held for seconds", () => {
+    const settings = buildAgentSettings({
+      thinkEndpointUrl: "https://app.example.com/api/v1/agent/think",
+      thinkAuthToken: "signed-token",
+    });
+
+    const provider = settings.listen?.provider as { eot_timeout_ms?: number };
+    expect(provider.eot_timeout_ms).toBeLessThanOrEqual(6000);
+  });
 });
 
 const sessionHandlers = new Map<string, (...args: unknown[]) => void>();
@@ -207,6 +222,52 @@ describe("createVoiceSession", () => {
     expect(micStop).toHaveBeenCalled();
     expect(playerDispose).toHaveBeenCalled();
     expect(disconnect).toHaveBeenCalled();
+  });
+
+  // Bugs 1/2: the mic stays open continuously (§6, barge-in), but AgentPlayer
+  // plays TTS through a raw Web Audio destination rather than an <audio>
+  // element, and browser echo-cancellation isn't reliable for that setup —
+  // the agent's own voice can get picked back up, misread as the user
+  // talking, and both cut playback off early (player.interrupt()) and get
+  // transcribed as a real turn. Gating outgoing mic frames while the agent's
+  // TTS is actually playing removes the self-echo source outright, at the
+  // cost of true voice barge-in.
+  describe("muting the microphone while the agent is speaking (echo prevention)", () => {
+    it("stops forwarding microphone frames once the agent starts speaking", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30, thinkAuthToken: "t" }),
+        ),
+      );
+
+      const session = await createVoiceSession({}, { fetchImpl, thinkEndpointUrl: "https://app.example.com/api/v1/agent/think" });
+      await session.start();
+      sendAudio.mockClear();
+
+      sessionHandlers.get("agent-started-speaking")?.();
+      lastMicFrameCallback?.(new ArrayBuffer(4));
+
+      expect(sendAudio).not.toHaveBeenCalled();
+    });
+
+    it("resumes forwarding microphone frames once the agent's audio finishes", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30, thinkAuthToken: "t" }),
+        ),
+      );
+
+      const session = await createVoiceSession({}, { fetchImpl, thinkEndpointUrl: "https://app.example.com/api/v1/agent/think" });
+      await session.start();
+      sendAudio.mockClear();
+
+      sessionHandlers.get("agent-started-speaking")?.();
+      sessionHandlers.get("agent-audio-done")?.();
+      const frame = new ArrayBuffer(4);
+      lastMicFrameCallback?.(frame);
+
+      expect(sendAudio).toHaveBeenCalledWith(frame);
+    });
   });
 
   // The think endpoint's slow calls (get_weather/get_events/get_flight_status)

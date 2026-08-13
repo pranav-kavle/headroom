@@ -15,6 +15,28 @@ const MAX_TURNS = 5;
 
 const REFUSAL_TEXT = "I can't help with that one.";
 
+// Bug 9/10: nothing bounded how long a single model call could take, so a
+// hung or failed Anthropic request stalled the whole voice turn with no
+// user-facing signal at all — the user just heard silence forever.
+const MODEL_CALL_TIMEOUT_MS = 15_000;
+const MODEL_CALL_FAILURE_TEXT = "I'm having trouble reaching that right now — try again in a moment.";
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Model call timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export interface Citation {
   artifactId: string;
   quote: string;
@@ -86,7 +108,18 @@ export async function runAgentTurn(input: {
 
   for (let index = 0; index < MAX_TURNS; index++) {
     const modelStart = Date.now();
-    const response = await input.client.create({ ...base, messages });
+    let response: ModelResponse;
+    try {
+      response = await withTimeout(input.client.create({ ...base, messages }), MODEL_CALL_TIMEOUT_MS);
+    } catch {
+      turns.push({ index, modelMs: Date.now() - modelStart, toolMs: 0 });
+      return {
+        text: MODEL_CALL_FAILURE_TEXT,
+        citations,
+        refused: false,
+        timings: { totalMs: Date.now() - startedAt, turns },
+      };
+    }
     const modelMs = Date.now() - modelStart;
 
     // Check before reading content: on a refusal `content` can be empty, and

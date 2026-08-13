@@ -1,18 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AgentCitation, AgentTurnCitationsResponse } from "@headroom/contracts";
-import { createVoiceSession, type VoiceSession } from "@/lib/voice-session";
+import { AgentCitation } from "@headroom/contracts";
 import styles from "./VoiceRecorder.module.css";
 
-// Tap-to-start / tap-to-end, not push-to-talk — design doc
-// 2026-08-12-deepgram-voice-agent-design.md §6. Barge-in needs the mic open
-// *while the agent is speaking*, which a press-and-hold gesture can't
-// express, so the mic stays open for the whole session rather than only
-// while a finger is on the button.
-type Status = "idle" | "connecting" | "listening" | "speaking" | "error";
+// Design doc 2026-08-12-deepgram-voice-agent-design.md §6: barge-in needs the
+// mic open *while the agent is speaking*, which a press-and-hold gesture
+// can't express, so the mic stays open for the whole session once started.
+// VoiceOverlay owns the session lifecycle (it has to — starting it is a
+// single tap on the FAB, before this component ever mounts); this component
+// only renders what that state looks like and forwards the mic-button tap.
+export type VoiceStatus = "idle" | "connecting" | "listening" | "speaking" | "error";
 
-const LABELS: Record<Status, string> = {
+export const VOICE_STATUS_LABELS: Record<VoiceStatus, string> = {
   idle: "Tap to talk",
   connecting: "Connecting",
   listening: "Listening",
@@ -20,128 +19,38 @@ const LABELS: Record<Status, string> = {
   error: "Something went wrong",
 };
 
-interface TurnEntry {
+export interface VoiceTurn {
   role: "user" | "assistant";
   content: string;
   citations: AgentCitation[];
 }
 
-async function fetchLatestCitations(): Promise<AgentCitation[]> {
-  // §6: citations for a turn are produced inside /api/v1/agent/think and
-  // never travel over Deepgram's socket, so they're fetched separately
-  // rather than read off the conversation-text event.
-  const response = await fetch("/api/v1/agent/think/citations");
-  if (!response.ok) return [];
-  return AgentTurnCitationsResponse.parse(await response.json()).citations;
-}
-
-export function VoiceRecorder() {
-  const [status, setStatus] = useState<Status>("idle");
-  const [turns, setTurns] = useState<TurnEntry[]>([]);
-  const sessionRef = useRef<VoiceSession | null>(null);
-  // Guards the async gap in start() below — connect() is in flight while
-  // status is "connecting" and sessionRef is still null, so a stop() called
-  // in that window can't reach a session yet. Without this flag the
-  // in-flight .then() resolves afterwards regardless and resurrects the
-  // session the user already tried to exit.
-  const cancelledRef = useRef(false);
-
-  const handleConversationText = useCallback((message: { role: string; content: string }) => {
-    const role: "user" | "assistant" = message.role === "assistant" ? "assistant" : "user";
-    let insertedIndex = -1;
-    setTurns((prev) => {
-      insertedIndex = prev.length;
-      return [...prev, { role, content: message.content, citations: [] }];
-    });
-
-    if (role === "assistant") {
-      void fetchLatestCitations().then((citations) => {
-        if (citations.length === 0) return;
-        setTurns((prev) => {
-          if (insertedIndex < 0 || insertedIndex >= prev.length) return prev;
-          const next = [...prev];
-          next[insertedIndex] = { ...next[insertedIndex], citations };
-          return next;
-        });
-      });
-    }
-  }, []);
-
-  const stop = useCallback(() => {
-    cancelledRef.current = true;
-    sessionRef.current?.stop();
-    sessionRef.current = null;
-    setStatus("idle");
-  }, []);
-
-  const start = useCallback(() => {
-    // Deliberately not awaited before calling createVoiceSession — that call
-    // has to happen synchronously inside this tap handler, or the network
-    // round trip for the Deepgram token breaks the gesture-context link
-    // AgentPlayer needs to unlock iOS audio (voice-session.ts, §9 gotcha #1).
-    cancelledRef.current = false;
-    setStatus("connecting");
-    setTurns([]);
-
-    void createVoiceSession(
-      {
-        onConversationText: handleConversationText,
-        onAgentStartedSpeaking: () => setStatus("speaking"),
-        onUserStartedSpeaking: () => setStatus("listening"),
-        onDisconnected: () => {
-          sessionRef.current = null;
-          setStatus("idle");
-        },
-        onError: () => setStatus("error"),
-      },
-      { thinkEndpointUrl: new URL("/api/v1/agent/think", window.location.origin).toString() },
-    )
-      .then(async (session) => {
-        if (cancelledRef.current) {
-          session.stop();
-          return;
-        }
-        sessionRef.current = session;
-        await session.start();
-        if (cancelledRef.current) {
-          session.stop();
-          sessionRef.current = null;
-          return;
-        }
-        setStatus("listening");
-      })
-      .catch(() => {
-        if (!cancelledRef.current) setStatus("error");
-      });
-  }, [handleConversationText]);
-
-  const toggle = useCallback(() => {
-    if (status === "idle" || status === "error") {
-      start();
-    } else {
-      stop();
-    }
-  }, [status, start, stop]);
-
-  // Covers every dismissal path that isn't the mic-toggle above — the sheet's
-  // scrim/close button and the back-gesture/Escape handling in VoiceOverlay
-  // all just unmount this component, none of them know about sessionRef.
-  useEffect(() => {
-    return () => {
-      cancelledRef.current = true;
-      sessionRef.current?.stop();
-      sessionRef.current = null;
-    };
-  }, []);
-
+export function VoiceRecorder({
+  status,
+  errorMessage,
+  turns,
+  onToggleMic,
+}: {
+  status: VoiceStatus;
+  // Bug 9/10: "Something went wrong" covered token failures, dropped
+  // connections, and SDK errors alike with no way to tell them apart or know
+  // what tapping the mic again would do. VoiceOverlay now names the actual
+  // cause; this falls back to the generic label only if it didn't.
+  errorMessage?: string;
+  turns: VoiceTurn[];
+  onToggleMic: () => void;
+}) {
   const sessionActive = status === "connecting" || status === "listening" || status === "speaking";
+  const label = status === "error" && errorMessage ? errorMessage : VOICE_STATUS_LABELS[status];
+  const micCaption = status === "error" ? "Tap to try again" : sessionActive ? "Tap to end" : "Tap to start talking";
 
   return (
     <div className={styles.sheet}>
       <div className={styles.orb} data-status={status} />
-      <div className={styles.listening}>{LABELS[status]}</div>
+      <div className={styles.listening}>{label}</div>
 
       <div className={styles.log}>
+        {turns.length === 0 && <p className={styles.placeholder}>Say something to get started.</p>}
         {turns.map((turn, index) => (
           <div key={index} className={turn.role === "assistant" ? styles.reply : styles.transcript}>
             <p>{turn.content}</p>
@@ -163,7 +72,7 @@ export function VoiceRecorder() {
           type="button"
           className={styles.micLg}
           aria-pressed={sessionActive}
-          onClick={toggle}
+          onClick={onToggleMic}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round">
             <rect x="9" y="2.5" width="6" height="11" rx="3" />
@@ -171,7 +80,7 @@ export function VoiceRecorder() {
             <path d="M12 17.5V21" />
           </svg>
         </button>
-        <div className={styles.micCap}>{sessionActive ? "Tap to end" : "Tap to start talking"}</div>
+        <div className={styles.micCap}>{micCaption}</div>
       </div>
     </div>
   );

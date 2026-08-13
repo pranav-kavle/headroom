@@ -126,6 +126,14 @@
   min-height: 0;
 }
 
+.placeholder {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--hr-ink-3);
+  text-align: center;
+  margin: auto 0;
+}
+
 .transcript p {
   font-size: 21px;
   line-height: 1.38;
