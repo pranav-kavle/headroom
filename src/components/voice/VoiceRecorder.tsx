@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentCitation, AgentTurnCitationsResponse } from "@headroom/contracts";
 import { createVoiceSession, type VoiceSession } from "@/lib/voice-session";
 import styles from "./VoiceRecorder.module.css";
@@ -39,6 +39,12 @@ export function VoiceRecorder() {
   const [status, setStatus] = useState<Status>("idle");
   const [turns, setTurns] = useState<TurnEntry[]>([]);
   const sessionRef = useRef<VoiceSession | null>(null);
+  // Guards the async gap in start() below — connect() is in flight while
+  // status is "connecting" and sessionRef is still null, so a stop() called
+  // in that window can't reach a session yet. Without this flag the
+  // in-flight .then() resolves afterwards regardless and resurrects the
+  // session the user already tried to exit.
+  const cancelledRef = useRef(false);
 
   const handleConversationText = useCallback((message: { role: string; content: string }) => {
     const role: "user" | "assistant" = message.role === "assistant" ? "assistant" : "user";
@@ -62,6 +68,7 @@ export function VoiceRecorder() {
   }, []);
 
   const stop = useCallback(() => {
+    cancelledRef.current = true;
     sessionRef.current?.stop();
     sessionRef.current = null;
     setStatus("idle");
@@ -72,6 +79,7 @@ export function VoiceRecorder() {
     // has to happen synchronously inside this tap handler, or the network
     // round trip for the Deepgram token breaks the gesture-context link
     // AgentPlayer needs to unlock iOS audio (voice-session.ts, §9 gotcha #1).
+    cancelledRef.current = false;
     setStatus("connecting");
     setTurns([]);
 
@@ -89,11 +97,22 @@ export function VoiceRecorder() {
       { thinkEndpointUrl: new URL("/api/v1/agent/think", window.location.origin).toString() },
     )
       .then(async (session) => {
+        if (cancelledRef.current) {
+          session.stop();
+          return;
+        }
         sessionRef.current = session;
         await session.start();
+        if (cancelledRef.current) {
+          session.stop();
+          sessionRef.current = null;
+          return;
+        }
         setStatus("listening");
       })
-      .catch(() => setStatus("error"));
+      .catch(() => {
+        if (!cancelledRef.current) setStatus("error");
+      });
   }, [handleConversationText]);
 
   const toggle = useCallback(() => {
@@ -104,11 +123,22 @@ export function VoiceRecorder() {
     }
   }, [status, start, stop]);
 
+  // Covers every dismissal path that isn't the mic-toggle above — the sheet's
+  // scrim/close button and the back-gesture/Escape handling in VoiceOverlay
+  // all just unmount this component, none of them know about sessionRef.
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+      sessionRef.current?.stop();
+      sessionRef.current = null;
+    };
+  }, []);
+
   const sessionActive = status === "connecting" || status === "listening" || status === "speaking";
 
   return (
     <div className={styles.sheet}>
-      <div className={styles.orb} data-active={sessionActive} />
+      <div className={styles.orb} data-status={status} />
       <div className={styles.listening}>{LABELS[status]}</div>
 
       <div className={styles.log}>

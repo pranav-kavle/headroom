@@ -10,7 +10,7 @@ export function VoiceFab({ onOpen }: { onOpen: () => void }) {
           <path d="M12 17.5V21" />
         </svg>
       </button>
-      <div className={styles.hint}>Hold</div>
+      <div className={styles.hint}>Tap</div>
     </div>
   );
 }

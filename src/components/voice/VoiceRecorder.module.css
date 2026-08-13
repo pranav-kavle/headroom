@@ -16,6 +16,16 @@
   position: relative;
   flex: 0 0 auto;
   background: color-mix(in srgb, var(--hr-violet) 10%, transparent);
+  transition: background 0.2s ease;
+}
+
+.orb::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hr-violet) 18%, transparent);
+  transition: background 0.2s ease;
 }
 
 .orb::after {
@@ -24,10 +34,37 @@
   inset: 27px;
   border-radius: 999px;
   background: var(--hr-violet);
+  transition: background 0.2s ease;
 }
 
-.orb[data-active="true"] {
+/* Listening: the mic is open and it's the user's turn — an outward ring
+   pulse on the whole orb reads as "I'm capturing you". */
+.orb[data-status="listening"] {
   animation: pulse 1.4s ease-in-out infinite;
+}
+
+/* Connecting: nothing to react to yet — a slow fade on just the core reads
+   as "working", distinct from listening's outward ring. */
+.orb[data-status="connecting"]::after {
+  animation: breathe 1s ease-in-out infinite;
+}
+
+/* Speaking: the agent is talking, not the user — a faster inner bounce
+   reads as output rather than capture, without borrowing listening's ring. */
+.orb[data-status="speaking"]::after {
+  animation: bounce 0.6s ease-in-out infinite;
+}
+
+.orb[data-status="error"] {
+  background: color-mix(in srgb, var(--hr-red) 10%, transparent);
+}
+
+.orb[data-status="error"]::before {
+  background: color-mix(in srgb, var(--hr-red) 18%, transparent);
+}
+
+.orb[data-status="error"]::after {
+  background: var(--hr-red);
 }
 
 @keyframes pulse {
@@ -37,6 +74,26 @@
   }
   50% {
     box-shadow: 0 0 0 14px var(--hr-violet-bg);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
   }
 }
 
