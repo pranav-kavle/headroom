@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentMicrophone, AgentPlayer, AgentSession } from "@deepgram/agents";
 import { buildAgentSettings, createVoiceSession } from "../voice-session";
 
@@ -36,6 +36,21 @@ describe("buildAgentSettings", () => {
     expect(settings.listen?.provider).toMatchObject({ type: "deepgram" });
     expect(settings.speak?.provider).toMatchObject({ type: "deepgram" });
   });
+
+  // Richer asks ("what's the weather, and is my flight on time") mean more
+  // mid-sentence pauses. Biasing end-of-turn detection toward patience over
+  // Deepgram's defaults (eot_threshold 0.7, eot_timeout_ms 5000) trades a
+  // little latency for not cutting the user off mid-thought.
+  it("biases end-of-turn detection toward patience rather than Deepgram's defaults", () => {
+    const settings = buildAgentSettings({
+      thinkEndpointUrl: "https://app.example.com/api/v1/agent/think",
+      thinkAuthToken: "signed-token",
+    });
+
+    const provider = settings.listen?.provider as { eot_threshold?: number; eot_timeout_ms?: number };
+    expect(provider.eot_threshold).toBeGreaterThan(0.7);
+    expect(provider.eot_timeout_ms).toBeGreaterThan(5000);
+  });
 });
 
 const sessionHandlers = new Map<string, (...args: unknown[]) => void>();
@@ -47,6 +62,7 @@ const micStop = vi.fn();
 const playerQueue = vi.fn();
 const playerInterrupt = vi.fn();
 const playerDispose = vi.fn();
+const injectAgentMessage = vi.fn();
 let lastMicFrameCallback: ((data: ArrayBuffer) => void) | undefined;
 
 vi.mock("@deepgram/agents", () => ({
@@ -57,6 +73,7 @@ vi.mock("@deepgram/agents", () => ({
     connect,
     disconnect,
     sendAudio,
+    injectAgentMessage,
   })),
   AgentMicrophone: vi.fn().mockImplementation((onAudioFrame: (data: ArrayBuffer) => void) => {
     lastMicFrameCallback = onAudioFrame;
@@ -190,5 +207,81 @@ describe("createVoiceSession", () => {
     expect(micStop).toHaveBeenCalled();
     expect(playerDispose).toHaveBeenCalled();
     expect(disconnect).toHaveBeenCalled();
+  });
+
+  // The think endpoint's slow calls (get_weather/get_events/get_flight_status)
+  // are the ones worth filling silence for, but injectAgentMessage only exists
+  // as a call on the client-held session — the server has no way to trigger
+  // it mid-request. A latency-based timer client-side is the only mechanism
+  // that reaches the slow case without the client knowing which tool ran.
+  describe("filler message while the agent is thinking", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      injectAgentMessage.mockClear();
+    });
+
+    it("injects a filler if the agent hasn't started speaking within the filler delay", async () => {
+      vi.useFakeTimers();
+      const fetchImpl = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30, thinkAuthToken: "t" }),
+        ),
+      );
+
+      await createVoiceSession({}, { fetchImpl, thinkEndpointUrl: "https://app.example.com/api/v1/agent/think" });
+      sessionHandlers.get("agent-thinking")?.();
+      vi.advanceTimersByTime(1200);
+
+      expect(injectAgentMessage).toHaveBeenCalledTimes(1);
+      expect(injectAgentMessage).toHaveBeenCalledWith(expect.any(String));
+    });
+
+    it("does not inject a filler once the agent starts speaking before the delay elapses", async () => {
+      vi.useFakeTimers();
+      const fetchImpl = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30, thinkAuthToken: "t" }),
+        ),
+      );
+
+      await createVoiceSession({}, { fetchImpl, thinkEndpointUrl: "https://app.example.com/api/v1/agent/think" });
+      sessionHandlers.get("agent-thinking")?.();
+      sessionHandlers.get("agent-started-speaking")?.();
+      vi.advanceTimersByTime(1200);
+
+      expect(injectAgentMessage).not.toHaveBeenCalled();
+    });
+
+    it("cancels a pending filler if the user barges in before it fires", async () => {
+      vi.useFakeTimers();
+      const fetchImpl = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30, thinkAuthToken: "t" }),
+        ),
+      );
+
+      await createVoiceSession({}, { fetchImpl, thinkEndpointUrl: "https://app.example.com/api/v1/agent/think" });
+      sessionHandlers.get("agent-thinking")?.();
+      sessionHandlers.get("user-started-speaking")?.();
+      vi.advanceTimersByTime(1200);
+
+      expect(injectAgentMessage).not.toHaveBeenCalled();
+    });
+
+    it("cancels a pending filler on stop() rather than firing after teardown", async () => {
+      vi.useFakeTimers();
+      const fetchImpl = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30, thinkAuthToken: "t" }),
+        ),
+      );
+
+      const session = await createVoiceSession({}, { fetchImpl, thinkEndpointUrl: "https://app.example.com/api/v1/agent/think" });
+      sessionHandlers.get("agent-thinking")?.();
+      session.stop();
+      vi.advanceTimersByTime(1200);
+
+      expect(injectAgentMessage).not.toHaveBeenCalled();
+    });
   });
 });
