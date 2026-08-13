@@ -46,6 +46,11 @@ export async function POST(request: NextRequest) {
       // date itself, so it has to be handed one.
       now: new Date(),
       listCommitments: (id) => listCommitments(id),
+      // §16's live lookups (get_weather/get_events/get_flight_status). If
+      // unset, the tool itself throws a named "key not configured" error
+      // rather than this route failing the whole turn up front.
+      ticketmasterApiKey: process.env.TICKETMASTER_API_KEY,
+      rapidApiKey: process.env.RAPIDAPI_KEY,
     },
   });
 
