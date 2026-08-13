@@ -14,12 +14,20 @@
   bottom: 0;
   width: 100%;
   max-width: 390px;
+  /* A long conversation must not push the sheet past the viewport — that
+     takes the close button with it and reproduces the "can't exit" bug this
+     component exists to fix. The turn log inside scrolls; the sheet itself
+     never grows past this. */
+  max-height: min(640px, 82vh);
+  display: flex;
+  flex-direction: column;
   transform: translateX(-50%);
   background: var(--hr-bg);
   border-radius: 26px 26px 0 0;
   padding: 12px 22px calc(30px + env(safe-area-inset-bottom));
   box-shadow: 0 -10px 40px rgba(16, 18, 25, 0.16);
   z-index: 31;
+  overflow: hidden;
 }
 
 .close {
