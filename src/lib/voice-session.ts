@@ -128,6 +128,19 @@ export async function createVoiceSession(
   options: CreateVoiceSessionOptions,
 ): Promise<VoiceSession> {
   const fetchImpl = options.fetchImpl ?? fetch;
+
+  // Temporary tracing for bugs 1/2: self-echo was reported as still live in
+  // roughly the first 10s of a session despite the mic-gating fix below
+  // looking correct on review. Rather than guess a second time, this traces
+  // the actual event/timing sequence — in particular, whether
+  // user-started-speaking ever fires while micGated is already true, which
+  // should be impossible if gating is doing its job and would point at
+  // something bypassing it entirely. Remove once the root cause is found.
+  const sessionStartedAt = Date.now();
+  const trace = (event: string, extra?: Record<string, unknown>) => {
+    console.debug(`[voice +${Date.now() - sessionStartedAt}ms] ${event}`, extra ?? "");
+  };
+
   const player = new AgentPlayer({ sampleRate: SPEAK_SAMPLE_RATE });
   player.queue(SILENT_FRAME);
 
@@ -168,8 +181,28 @@ export async function createVoiceSession(
     fillerTimer = undefined;
   };
 
+  // agent-audio-done fires once the *server* has finished sending audio
+  // bytes for the reply — AgentPlayer schedules those bytes for real-time
+  // playback separately, so for anything longer than a short reply there's a
+  // real window where the transport signal has already fired but the reply
+  // is still audibly playing. Poll actual remaining playback time rather
+  // than trusting the transport-level event alone.
+  const PLAYBACK_POLL_INTERVAL_MS = 100;
+  let playbackPollTimer: ReturnType<typeof setInterval> | undefined;
+  const stopPlaybackPoll = () => {
+    clearInterval(playbackPollTimer);
+    playbackPollTimer = undefined;
+  };
+
+  session.on("welcome", () => trace("welcome"));
+  session.on("settings-applied", () => trace("settings-applied"));
   session.on("audio", (chunk) => player.queue(chunk));
   session.on("user-started-speaking", () => {
+    // The money line for the bugs 1/2 investigation: this should be
+    // impossible to see with micGated: true. If it shows up anyway,
+    // something is sending Deepgram audio outside our own gated frame
+    // callback below.
+    trace("user-started-speaking", { micGated });
     // AgentPlayer.interrupt() is the documented barge-in mechanism — Deepgram
     // does not truncate in-flight TTS server-side, per §8.
     player.interrupt();
@@ -181,12 +214,26 @@ export async function createVoiceSession(
     fillerTimer = setTimeout(() => session.injectAgentMessage(FILLER_MESSAGE), FILLER_DELAY_MS);
   });
   session.on("agent-started-speaking", () => {
+    trace("agent-started-speaking", { micGatedBefore: micGated });
     cancelFiller();
+    stopPlaybackPoll();
     micGated = true;
     events.onAgentStartedSpeaking?.();
   });
   session.on("agent-audio-done", () => {
-    micGated = false;
+    trace("agent-audio-done", { remainingPlaybackTime: player.getRemainingPlaybackTime() });
+    stopPlaybackPoll();
+    const checkPlaybackFinished = () => {
+      if (player.getRemainingPlaybackTime() <= 0) {
+        micGated = false;
+        trace("mic-ungated");
+        stopPlaybackPoll();
+      }
+    };
+    checkPlaybackFinished();
+    if (micGated) {
+      playbackPollTimer = setInterval(checkPlaybackFinished, PLAYBACK_POLL_INTERVAL_MS);
+    }
   });
   session.on("conversation-text", (message) =>
     events.onConversationText?.({ role: message.role, content: message.content }),
@@ -197,11 +244,18 @@ export async function createVoiceSession(
 
   return {
     async start() {
+      trace("connect:start");
       await session.connect();
+      // connect() resolves once the socket is open, not once settings are
+      // confirmed — mic capture below can begin before settings-applied,
+      // which is worth seeing relative to the settings-applied trace above.
+      trace("connect:resolved (socket open, settings not necessarily applied yet)");
       await microphone.start();
+      trace("microphone:started");
     },
     stop() {
       cancelFiller();
+      stopPlaybackPoll();
       microphone.stop();
       player.dispose();
       session.disconnect();

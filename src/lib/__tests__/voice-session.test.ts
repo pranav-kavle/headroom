@@ -78,6 +78,10 @@ const playerQueue = vi.fn();
 const playerInterrupt = vi.fn();
 const playerDispose = vi.fn();
 const injectAgentMessage = vi.fn();
+// Defaults to "nothing left to play" so tests that don't care about playback
+// timing (e.g. the plain agent-audio-done resume test) see the mic un-gate
+// immediately, matching their pre-existing expectations.
+const playerGetRemainingPlaybackTime = vi.fn().mockReturnValue(0);
 let lastMicFrameCallback: ((data: ArrayBuffer) => void) | undefined;
 
 vi.mock("@deepgram/agents", () => ({
@@ -98,6 +102,7 @@ vi.mock("@deepgram/agents", () => ({
     queue: playerQueue,
     interrupt: playerInterrupt,
     dispose: playerDispose,
+    getRemainingPlaybackTime: playerGetRemainingPlaybackTime,
   })),
 }));
 
@@ -250,6 +255,34 @@ describe("createVoiceSession", () => {
       expect(sendAudio).not.toHaveBeenCalled();
     });
 
+    // Bugs 1/2 investigation: self-echo was reported as still live in the
+    // field despite this gating. This should be impossible to observe with
+    // micGated: true — if it ever is, something is bypassing the gated frame
+    // callback entirely, which is the next thing to chase.
+    it("traces the mic-gated state whenever user-started-speaking fires, so a bypass would be visible", async () => {
+      const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+      try {
+        const fetchImpl = vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({ deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30, thinkAuthToken: "t" }),
+          ),
+        );
+
+        const session = await createVoiceSession({}, { fetchImpl, thinkEndpointUrl: "https://app.example.com/api/v1/agent/think" });
+        await session.start();
+
+        sessionHandlers.get("agent-started-speaking")?.();
+        sessionHandlers.get("user-started-speaking")?.();
+
+        expect(debugSpy).toHaveBeenCalledWith(
+          expect.stringContaining("user-started-speaking"),
+          expect.objectContaining({ micGated: true }),
+        );
+      } finally {
+        debugSpy.mockRestore();
+      }
+    });
+
     it("resumes forwarding microphone frames once the agent's audio finishes", async () => {
       const fetchImpl = vi.fn().mockResolvedValue(
         new Response(
@@ -267,6 +300,43 @@ describe("createVoiceSession", () => {
       lastMicFrameCallback?.(frame);
 
       expect(sendAudio).toHaveBeenCalledWith(frame);
+    });
+
+    // agent-audio-done means the *server* has finished sending audio bytes —
+    // AgentPlayer schedules chunks for real-time playback separately, so for
+    // anything longer than a short reply there's a real window where that
+    // event has already fired but the agent is still audibly speaking.
+    // Un-gating on the transport signal alone re-opens the mic mid-reply.
+    it("stays gated past agent-audio-done while AgentPlayer still has queued audio to play", async () => {
+      vi.useFakeTimers();
+      try {
+        const fetchImpl = vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({ deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30, thinkAuthToken: "t" }),
+          ),
+        );
+
+        const session = await createVoiceSession({}, { fetchImpl, thinkEndpointUrl: "https://app.example.com/api/v1/agent/think" });
+        await session.start();
+        sendAudio.mockClear();
+
+        playerGetRemainingPlaybackTime.mockReturnValue(2);
+        sessionHandlers.get("agent-started-speaking")?.();
+        sessionHandlers.get("agent-audio-done")?.();
+        lastMicFrameCallback?.(new ArrayBuffer(4));
+
+        expect(sendAudio).not.toHaveBeenCalled();
+
+        playerGetRemainingPlaybackTime.mockReturnValue(0);
+        await vi.advanceTimersByTimeAsync(500);
+        const frame = new ArrayBuffer(4);
+        lastMicFrameCallback?.(frame);
+
+        expect(sendAudio).toHaveBeenCalledWith(frame);
+      } finally {
+        playerGetRemainingPlaybackTime.mockReturnValue(0);
+        vi.useRealTimers();
+      }
     });
   });
 
