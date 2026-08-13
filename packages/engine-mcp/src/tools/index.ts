@@ -13,6 +13,9 @@ import {
   type ActionTier,
   type ActionPolicyOptions,
 } from "./action-policy";
+import { fetchWeather, type WeatherReport } from "./weather";
+import { fetchEvents, type EventSummary } from "./events";
+import { fetchFlightStatus, type FlightStatus } from "./flights";
 
 // Minimal JSON Schema shape — enough to describe these tools without pulling in
 // a schema library the engine would then be coupled to.
@@ -31,6 +34,12 @@ export interface EngineContext {
   now: Date;
   listCommitments: (userId: string) => Promise<StateCommitmentInput[]>;
   tier1Unattended?: boolean;
+  // Live third-party lookups (§16) — injected so tests never hit the network,
+  // and so the app layer (not the engine) owns key resolution, same as every
+  // other credential in this codebase.
+  fetchImpl?: typeof fetch;
+  ticketmasterApiKey?: string;
+  rapidApiKey?: string;
 }
 
 export interface EngineTool {
@@ -38,6 +47,9 @@ export interface EngineTool {
   description: string;
   inputSchema: ToolInputSchema;
   handler: (input: Record<string, unknown>, context: EngineContext) => Promise<unknown>;
+  // Set on tools that hit a live third-party API — the voice loop uses this
+  // to know which calls are slow enough to warrant a filler message.
+  external?: boolean;
 }
 
 const KNOWN_TIERS: ActionTier[] = ["tier_1", "tier_2", "tier_3", "tier_4"];
@@ -82,8 +94,83 @@ export function engineTools(): EngineTool[] {
         return { policy: getActionPolicy(input.tier, options) };
       },
     },
+    {
+      name: "get_weather",
+      description:
+        "Live current weather conditions for a place — temperature, wind, and sky. A plan-quality signal only, never a diagnosis of anything about the user.",
+      inputSchema: {
+        type: "object",
+        properties: { location: { type: "string", description: "A place name, e.g. 'Chicago'." } },
+        required: ["location"],
+        additionalProperties: false,
+      },
+      external: true,
+      handler: async (input, context): Promise<WeatherReport> => {
+        if (typeof input.location !== "string" || !input.location.trim()) {
+          throw new Error("get_weather requires a location.");
+        }
+        return fetchWeather({ location: input.location, fetchImpl: context.fetchImpl });
+      },
+    },
+    {
+      name: "get_events",
+      description:
+        "Live event listings (concerts, shows, games) near a place, from Ticketmaster. Useful for planning conflicts or suggestions — not a claim about anything the user has committed to.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          location: { type: "string", description: "A city name, e.g. 'Chicago'." },
+          keyword: { type: "string", description: "Optional search term, e.g. 'jazz' or a team name." },
+        },
+        required: ["location"],
+        additionalProperties: false,
+      },
+      external: true,
+      handler: async (input, context): Promise<{ events: EventSummary[] }> => {
+        if (typeof input.location !== "string" || !input.location.trim()) {
+          throw new Error("get_events requires a location.");
+        }
+        const events = await fetchEvents({
+          location: input.location,
+          keyword: typeof input.keyword === "string" ? input.keyword : undefined,
+          apiKey: context.ticketmasterApiKey ?? "",
+          fetchImpl: context.fetchImpl,
+        });
+        return { events };
+      },
+    },
+    {
+      name: "get_flight_status",
+      description:
+        "Live status of a specific flight — scheduled/revised times, airports, and current status — by flight number and date.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          flightNumber: { type: "string", description: "e.g. 'UA1' or 'BA249'." },
+          date: { type: "string", description: "The flight's departure date, as YYYY-MM-DD." },
+        },
+        required: ["flightNumber", "date"],
+        additionalProperties: false,
+      },
+      external: true,
+      handler: async (input, context): Promise<FlightStatus> => {
+        if (typeof input.flightNumber !== "string" || !input.flightNumber.trim()) {
+          throw new Error("get_flight_status requires a flightNumber.");
+        }
+        if (typeof input.date !== "string" || !input.date.trim()) {
+          throw new Error("get_flight_status requires a date.");
+        }
+        return fetchFlightStatus({
+          flightNumber: input.flightNumber,
+          date: input.date,
+          apiKey: context.rapidApiKey ?? "",
+          fetchImpl: context.fetchImpl,
+        });
+      },
+    },
   ];
 }
 
 export { buildState, getActionPolicy };
 export type { EngineState, StateCommitmentInput, ActionPolicy, ActionTier };
+export type { WeatherReport, EventSummary, FlightStatus };

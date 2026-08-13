@@ -18,7 +18,13 @@ describe("toAnthropicTools", () => {
   it("maps every engine tool to Anthropic's tool shape", () => {
     const tools = toAnthropicTools(engineTools());
 
-    expect(tools.map((t) => t.name).sort()).toEqual(["get_action_policy", "get_state"]);
+    expect(tools.map((t) => t.name).sort()).toEqual([
+      "get_action_policy",
+      "get_events",
+      "get_flight_status",
+      "get_state",
+      "get_weather",
+    ]);
     for (const tool of tools) {
       expect(tool.input_schema.type).toBe("object");
       expect(typeof tool.description).toBe("string");
@@ -63,7 +69,10 @@ describe("buildTurnParams", () => {
   it("passes the engine tools through to the model", () => {
     expect(params().tools.map((t) => t.name).sort()).toEqual([
       "get_action_policy",
+      "get_events",
+      "get_flight_status",
       "get_state",
+      "get_weather",
     ]);
   });
 
@@ -94,5 +103,14 @@ describe("SYSTEM_PROMPT", () => {
   it("allows general conversation rather than limiting the model to two jobs", () => {
     expect(SYSTEM_PROMPT).not.toMatch(/exactly two jobs/i);
     expect(SYSTEM_PROMPT).toMatch(/anything|any topic|general conversation/i);
+  });
+
+  // §16: these three are live third-party lookups, not claims about the
+  // user's life — the prompt should point the model at them without folding
+  // them into the commitments hard constraints above.
+  it("names the live lookup tools so the model knows to use them instead of guessing", () => {
+    expect(SYSTEM_PROMPT).toMatch(/get_weather/);
+    expect(SYSTEM_PROMPT).toMatch(/get_events/);
+    expect(SYSTEM_PROMPT).toMatch(/get_flight_status/);
   });
 });

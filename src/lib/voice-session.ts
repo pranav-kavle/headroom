@@ -45,13 +45,29 @@ interface CreateVoiceSessionOptions {
 // `agent.think.functions` stays unset: Deepgram never sees a tool schema or a
 // tool call, because every engine call happens inside /api/v1/agent/think
 // before it returns finished text.
+// eot_threshold/eot_timeout_ms are documented Flux settings (Deepgram's
+// Configure Voice Agent docs) but aren't in @deepgram/agents 0.1.1's published
+// V2 listen-provider type yet — assigned through this pre-typed constant
+// rather than an inline literal so TS's excess-property check doesn't reject
+// them structurally. Not yet verified against a live agent socket.
+const LISTEN_PROVIDER = {
+  type: "deepgram" as const,
+  version: "v2" as const,
+  model: "flux-general-en",
+  // Above Deepgram's defaults (0.7 / 5000ms) — richer asks ("what's the
+  // weather, and is my flight on time") mean more mid-sentence pauses, so a
+  // little extra patience here beats cutting the user off.
+  eot_threshold: 0.8,
+  eot_timeout_ms: 7000,
+};
+
 export function buildAgentSettings(options: {
   thinkEndpointUrl: string;
   thinkAuthToken: string;
 }): HeadroomAgentSettings {
   return {
     listen: {
-      provider: { type: "deepgram", version: "v2", model: "flux-general-en" },
+      provider: LISTEN_PROVIDER,
     },
     think: {
       // `model` is required by the schema but ignored once `endpoint.url` is
@@ -67,6 +83,17 @@ export function buildAgentSettings(options: {
     },
   };
 }
+
+// @deepgram/agents' injectAgentMessage() only exists on the client-held
+// AgentSession — there is no session-id-keyed side channel a server route
+// could use, so /api/v1/agent/think (which is what actually knows a slow
+// tool is running) can never trigger this directly. A latency-based timer is
+// the only mechanism available from here: fast calls (get_state,
+// get_action_policy) resolve well inside this window and never see a filler;
+// the three live third-party lookups (get_weather/get_events/
+// get_flight_status) are the ones slow enough to cross it.
+const FILLER_DELAY_MS = 1200;
+const FILLER_MESSAGE = "Let me check that.";
 
 // AgentSession only tells Deepgram what rate to actually use if `audio.*` is
 // explicitly set — omit it and Deepgram picks its own default while
@@ -119,14 +146,28 @@ export async function createVoiceSession(
     sampleRate: MIC_SAMPLE_RATE,
   });
 
+  let fillerTimer: ReturnType<typeof setTimeout> | undefined;
+  const cancelFiller = () => {
+    clearTimeout(fillerTimer);
+    fillerTimer = undefined;
+  };
+
   session.on("audio", (chunk) => player.queue(chunk));
   session.on("user-started-speaking", () => {
     // AgentPlayer.interrupt() is the documented barge-in mechanism — Deepgram
     // does not truncate in-flight TTS server-side, per §8.
     player.interrupt();
+    cancelFiller();
     events.onUserStartedSpeaking?.();
   });
-  session.on("agent-started-speaking", () => events.onAgentStartedSpeaking?.());
+  session.on("agent-thinking", () => {
+    cancelFiller();
+    fillerTimer = setTimeout(() => session.injectAgentMessage(FILLER_MESSAGE), FILLER_DELAY_MS);
+  });
+  session.on("agent-started-speaking", () => {
+    cancelFiller();
+    events.onAgentStartedSpeaking?.();
+  });
   session.on("conversation-text", (message) =>
     events.onConversationText?.({ role: message.role, content: message.content }),
   );
@@ -140,6 +181,7 @@ export async function createVoiceSession(
       await microphone.start();
     },
     stop() {
+      cancelFiller();
       microphone.stop();
       player.dispose();
       session.disconnect();

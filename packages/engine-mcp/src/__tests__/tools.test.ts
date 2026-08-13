@@ -19,11 +19,15 @@ function commitment(over: Partial<StateCommitmentInput> = {}): StateCommitmentIn
   };
 }
 
-function context(commitments: StateCommitmentInput[] = []): EngineContext {
+function context(
+  commitments: StateCommitmentInput[] = [],
+  over: Partial<EngineContext> = {},
+): EngineContext {
   return {
     userId: "u1",
     now: NOW,
     listCommitments: async () => commitments,
+    ...over,
   };
 }
 
@@ -34,8 +38,14 @@ function toolNamed(name: string) {
 }
 
 describe("engineTools", () => {
-  it("exposes the engine tools built so far, under their design-doc §7 names", () => {
-    expect(engineTools().map((t) => t.name).sort()).toEqual(["get_action_policy", "get_state"]);
+  it("exposes the engine tools built so far, under their design-doc §7/§16 names", () => {
+    expect(engineTools().map((t) => t.name).sort()).toEqual([
+      "get_action_policy",
+      "get_events",
+      "get_flight_status",
+      "get_state",
+      "get_weather",
+    ]);
   });
 
   // The portability contract: plain JSON Schema, no SDK coupling, so the same
@@ -47,6 +57,20 @@ describe("engineTools", () => {
       expect(tool.inputSchema.type).toBe("object");
       expect(tool.inputSchema).not.toHaveProperty("_def"); // a Zod schema would have this
     }
+  });
+
+  // The voice loop needs to know which tools hit a live third-party API (and
+  // are therefore slow enough to warrant a filler message) versus which ones
+  // are the existing, fast, in-process engine reads.
+  it("flags the live third-party lookups as external, and the engine's own reads as not", () => {
+    const external = engineTools()
+      .filter((t) => t.external)
+      .map((t) => t.name)
+      .sort();
+    expect(external).toEqual(["get_events", "get_flight_status", "get_weather"]);
+
+    expect(toolNamed("get_state").external).toBeFalsy();
+    expect(toolNamed("get_action_policy").external).toBeFalsy();
   });
 });
 
@@ -74,6 +98,63 @@ describe("get_state handler", () => {
     await toolNamed("get_state").handler({ userId: "attacker" }, ctx);
 
     expect(askedFor).toBe("real-user");
+  });
+});
+
+describe("get_weather handler", () => {
+  it("geocodes the requested location and returns current conditions", async () => {
+    const fetchImpl = async (url: string | URL) => {
+      if (url.toString().includes("geocoding-api")) {
+        return new Response(JSON.stringify({ results: [{ latitude: 1, longitude: 2, name: "Nowhere" }] }));
+      }
+      return new Response(
+        JSON.stringify({ current: { time: "2026-08-12T09:00", temperature_2m: 18, weather_code: 0, wind_speed_10m: 5 } }),
+      );
+    };
+
+    const result = await toolNamed("get_weather").handler(
+      { location: "Nowhere" },
+      context([], { fetchImpl: fetchImpl as typeof fetch }),
+    );
+
+    expect(result).toMatchObject({ location: "Nowhere", temperatureC: 18, conditions: "clear sky" });
+  });
+});
+
+describe("get_events handler", () => {
+  it("passes the location and the context's Ticketmaster key through to the search", async () => {
+    let requestedUrl = "";
+    const fetchImpl = async (url: string | URL) => {
+      requestedUrl = url.toString();
+      return new Response(JSON.stringify({ _embedded: { events: [] } }));
+    };
+
+    await toolNamed("get_events").handler(
+      { location: "Chicago" },
+      context([], { fetchImpl: fetchImpl as typeof fetch, ticketmasterApiKey: "tm-key" }),
+    );
+
+    const params = new URL(requestedUrl).searchParams;
+    expect(params.get("apikey")).toBe("tm-key");
+    expect(params.get("city")).toBe("Chicago");
+  });
+});
+
+describe("get_flight_status handler", () => {
+  it("passes the flight number, date, and the context's RapidAPI key through to the lookup", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    const fetchImpl = async (_url: string | URL, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      return new Response(JSON.stringify([{ number: "UA 1", status: "Expected", departure: {}, arrival: {} }]));
+    };
+
+    const result = await toolNamed("get_flight_status").handler(
+      { flightNumber: "UA1", date: "2026-08-14" },
+      context([], { fetchImpl: fetchImpl as typeof fetch, rapidApiKey: "rapid-key" }),
+    );
+
+    expect(result).toMatchObject({ flightNumber: "UA 1", status: "Expected" });
+    expect(capturedHeaders["x-rapidapi-key"]).toBe("rapid-key");
   });
 });
 
