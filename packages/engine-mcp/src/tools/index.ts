@@ -2,7 +2,7 @@
 // Schema with no LLM-SDK coupling.
 //
 // That's deliberate and load-bearing: the same definitions feed the Anthropic
-// Tool Runner today and could feed Deepgram Voice Agent's function calling at
+// turn loop today and could feed Deepgram Voice Agent's function calling at
 // v1.5 through a small adapter, rather than needing a rewrite per tool. Port
 // rule 5 applied to the model layer.
 

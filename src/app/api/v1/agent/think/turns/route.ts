@@ -8,7 +8,7 @@ import { recentTurns } from "@/lib/agent-turns";
 // browser fetches them here after each agent utterance and matches them to
 // that utterance by its text.
 //
-// Non-destructive, unlike the /citations endpoint this replaces: reading is
+// Non-destructive, unlike the endpoint this replaces: reading is
 // idempotent, so a re-render or a second tab cannot steal another turn's
 // evidence. Only the caller's own turns are ever returned.
 export async function GET() {

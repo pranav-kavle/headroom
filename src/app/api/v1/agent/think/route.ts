@@ -20,8 +20,9 @@ const SSE_HEADERS = { "Content-Type": "text/event-stream", "Cache-Control": "no-
 // — design doc 2026-08-12-deepgram-voice-agent-design.md §2/§5. Deepgram calls
 // this directly with no browser session attached, so identity comes from the
 // signed token the browser embedded in the Settings message's custom header,
-// not from a Clerk cookie. Everything past that point is the same Tool Runner
-// /api/v1/agent/turns used to run — same model, same tier-gating hook.
+// not from a Clerk cookie. Everything past that point is `runAgentTurn` — the
+// hand-written loop in agent-loop.ts, which is where the tier gate and the
+// output verifier live.
 export async function POST(request: NextRequest) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) {

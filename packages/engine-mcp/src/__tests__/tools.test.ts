@@ -72,7 +72,7 @@ describe("engineTools", () => {
   });
 
   // The portability contract: plain JSON Schema, no SDK coupling, so the same
-  // definitions feed the Anthropic Tool Runner today and Deepgram's Voice Agent
+  // definitions feed the Anthropic turn loop today and Deepgram's Voice Agent
   // function calling later.
   it("describes every tool with a plain JSON Schema object", () => {
     for (const tool of engineTools()) {

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 // endpoint — design doc 2026-08-12-deepgram-voice-agent-design.md §2/§5.
 // Deepgram only accepts a custom think provider that speaks the OpenAI
 // chat-completions wire format; everything on our side of this file is our
-// own Tool Runner, untouched.
+// own turn loop, untouched.
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -132,8 +132,8 @@ export function isEchoOfPrecedingAgentTurn(request: ChatCompletionRequest): bool
 // Deepgram's custom `think` endpoint requires this exact SSE shape — a plain
 // JSON chat-completion body runs fine but is never spoken, confirmed live via
 // the container logs (real text returned every time, nothing ever reached
-// speech). Not real token streaming: our own Tool Runner only has the full
-// reply once its two-turn loop finishes, so this sends it as a single delta
+// speech). Not real token streaming: `runAgentTurn` only has the full reply
+// once its two-turn loop finishes, so this sends it as a single delta
 // chunk followed by the closing chunk and `[DONE]`, matching the framing
 // Deepgram's parser expects without pretending to stream token-by-token.
 export function toChatCompletionStream(text: string, model: string): ReadableStream<Uint8Array> {

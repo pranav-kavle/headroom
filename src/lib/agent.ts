@@ -1,10 +1,15 @@
 // The agent turn — design doc §3 (core rules), §7 (the engine), §9 (voice), and
 // the voice-agent-harness spec §2/§4/§5.
 //
-// The harness is the Anthropic SDK's Tool Runner over the engine's tools, not
-// the Claude Agent SDK: this agent's whole capability surface is engine
-// functions over Postgres, answered inside one voice turn. Nothing here needs a
-// filesystem, a shell, or web search.
+// This file builds the request; `agent-loop.ts` drives it. The harness is a
+// hand-written loop over the engine's tools — *not* the SDK's Tool Runner the
+// harness spec §2 originally chose, and not the Claude Agent SDK. The spec's
+// argument against the Agent SDK still holds: this agent's whole capability
+// surface is engine functions over Postgres, answered inside one voice turn,
+// with no filesystem, shell, or web search anywhere in it. What changed is the
+// layer below that — see agent-loop.ts for why owning the loop directly was
+// worth it, and note that §2's plan to host tier gating on the Tool Runner's
+// interceptor hook was superseded by the gate in that loop.
 
 import { engineTools, type EngineTool } from "@headroom/engine-mcp";
 import { ASSISTANT_NAME } from "./assistant";
