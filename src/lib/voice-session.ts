@@ -28,6 +28,10 @@ export interface VoiceSessionEvents {
   onConversationText?: (message: { role: string; content: string }) => void;
   onUserStartedSpeaking?: () => void;
   onAgentStartedSpeaking?: () => void;
+  // The engine is working and neither party is talking. Already the moment a
+  // spoken filler gets scheduled below; surfacing it lets the screen say so
+  // too, instead of leaving "Listening" up while nothing is being heard.
+  onAgentThinking?: () => void;
   onError?: (error: Error) => void;
   onDisconnected?: () => void;
 }
@@ -35,6 +39,16 @@ export interface VoiceSessionEvents {
 export interface VoiceSession {
   start(): Promise<void>;
   stop(): void;
+  // True only while mic audio is genuinely leaving this client — false for the
+  // whole of the agent's turn (the echo gate) and while the user has muted.
+  // The UI renders a mic control off this, so it has to mean what it says.
+  isMicOpen(): boolean;
+  // 0–1, from the SDK's own analysers. Input reads 0 whenever the mic is shut,
+  // because the analyser goes on hearing the room — including the agent's own
+  // voice — long after anything is being sent.
+  getInputLevel(): number;
+  getOutputLevel(): number;
+  setMuted(muted: boolean): void;
 }
 
 interface CreateVoiceSessionOptions {
@@ -167,9 +181,13 @@ export async function createVoiceSession(
   // itself, and the reply seeds the next round. Barge-in is the price; tap-to-
   // end still works while the agent is speaking.
   let micGated = false;
+  // Deliberately separate from micGated: these are two different reasons for
+  // the mic to be shut, and the user can only lift one of them. Folding them
+  // into one flag would let an unmute mid-reply reopen the echo gate.
+  let userMuted = false;
   const microphone = new AgentMicrophone(
     (frame) => {
-      if (!micGated) session.sendAudio(frame);
+      if (!micGated && !userMuted) session.sendAudio(frame);
     },
     {
       sampleRate: MIC_SAMPLE_RATE,
@@ -263,6 +281,7 @@ export async function createVoiceSession(
   });
   session.on("agent-thinking", () => {
     cancelFiller();
+    events.onAgentThinking?.();
     fillerTimer = setTimeout(() => session.injectAgentMessage(FILLER_MESSAGE), FILLER_DELAY_MS);
   });
   session.on("agent-started-speaking", () => {
@@ -291,6 +310,28 @@ export async function createVoiceSession(
       microphone.stop();
       player.dispose();
       session.disconnect();
+    },
+    isMicOpen() {
+      return !micGated && !userMuted;
+    },
+    getInputLevel() {
+      // Not `microphone.getInputVolume()` unconditionally: while the gate is
+      // shut, what the analyser hears is the agent's own voice out of the
+      // speaker. Forwarding it would animate a "hearing you" indicator off the
+      // agent's speech — the screen contradicting its own mic label.
+      if (micGated || userMuted) return 0;
+      return microphone.getInputVolume();
+    },
+    getOutputLevel() {
+      return player.getOutputVolume();
+    },
+    setMuted(muted: boolean) {
+      userMuted = muted;
+      // Muting at the SDK as well as at the send gate: stopping the frames is
+      // what makes it true, but leaving the capture running would keep the
+      // OS recording indicator lit while the UI claims to be muted.
+      if (muted) microphone.mute();
+      else microphone.unmute();
     },
   };
 }
