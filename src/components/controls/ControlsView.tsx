@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useClerk, useUser } from "@clerk/nextjs";
-import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
+import { useClerk, useReverification, useUser } from "@clerk/nextjs";
+import { isClerkAPIResponseError, isReverificationCancelledError } from "@clerk/nextjs/errors";
 import type { ConnectorCursorRow } from "@headroom/graph";
 import { initialsFromEmail } from "@/lib/initials";
 import styles from "./ControlsView.module.css";
@@ -76,16 +76,25 @@ export function ControlsView({
   const [githubSyncing, setGithubSyncing] = useState(false);
   const [githubSyncError, setGithubSyncError] = useState<string | null>(null);
 
+  // Linking an external account is a sensitive operation — Clerk requires the
+  // session to be freshly re-verified first and throws
+  // session_reverification_required otherwise. useReverification shows Clerk's
+  // built-in step-up modal and retries createExternalAccount once it passes.
+  const createGithubExternalAccount = useReverification(() => {
+    if (!user) return undefined;
+    return user.createExternalAccount({
+      strategy: "oauth_github",
+      additionalScopes: ["repo"],
+      redirectUrl: "/controls",
+    });
+  });
+
   async function connectGithub() {
     if (!user) return;
     setGithubSyncError(null);
     try {
-      const account = await user.createExternalAccount({
-        strategy: "oauth_github",
-        additionalScopes: ["repo"],
-        redirectUrl: "/controls",
-      });
-      const redirectUrl = account.verification?.externalVerificationRedirectURL;
+      const account = await createGithubExternalAccount();
+      const redirectUrl = account?.verification?.externalVerificationRedirectURL;
       if (redirectUrl) {
         window.location.href = redirectUrl.toString();
       } else {
@@ -93,6 +102,7 @@ export function ControlsView({
         setGithubSyncError("Couldn't start GitHub connection. Try again?");
       }
     } catch (error) {
+      if (isReverificationCancelledError(error)) return;
       console.error("[controls/github] createExternalAccount failed", error);
       const message = isClerkAPIResponseError(error)
         ? error.errors[0]?.longMessage ?? error.errors[0]?.message
