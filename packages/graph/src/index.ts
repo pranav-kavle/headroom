@@ -1,3 +1,4 @@
+export type { ArtifactSource, CommitmentDirection, DuePrecision, IdentityKind } from "./generated/prisma/client";
 export { prisma, pingDatabase } from "./client";
 export type { PrismaClient } from "./client";
 export { completeOnboarding, createUser, findUserByClerkId, listUsers } from "./users";
