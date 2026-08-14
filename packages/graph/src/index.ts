@@ -4,6 +4,8 @@ export { completeOnboarding, createUser, findUserByClerkId, listUsers } from "./
 export type { OnboardingInput, UserRow } from "./users";
 export { createArtifact } from "./artifacts";
 export type { ArtifactRow } from "./artifacts";
+export { ensureSelfPerson, resolvePerson } from "./people";
+export type { PersonRow } from "./people";
 export { listConnectorCursors } from "./connectors";
 export type { ConnectorCursorRow } from "./connectors";
 export { getCommitmentById, listCommitments } from "./commitments";
