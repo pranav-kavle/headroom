@@ -96,16 +96,28 @@ describe("listCommitments", () => {
   it("orders open/at_risk/overdue commitments before closed ones, then by dueAt ascending", async () => {
     const user = await makeUser("list-order");
     const person = await makePerson(user.id, "Dave");
-    const artifact = await createArtifact({
+    const fulfilledArtifact = await createArtifact({
       userId: user.id,
       source: "voice_note",
       occurredAt: new Date(),
-      excerpt: "note",
+      excerpt: "note 1",
+    });
+    const laterOpenArtifact = await createArtifact({
+      userId: user.id,
+      source: "voice_note",
+      occurredAt: new Date(),
+      excerpt: "note 2",
+    });
+    const overdueArtifact = await createArtifact({
+      userId: user.id,
+      source: "voice_note",
+      occurredAt: new Date(),
+      excerpt: "note 3",
     });
     const fulfilled = await makeCommitment({
       userId: user.id,
       counterpartyPersonId: person.id,
-      sourceArtifactId: artifact.id,
+      sourceArtifactId: fulfilledArtifact.id,
       summary: "Already done",
       status: "fulfilled",
       dueAt: new Date("2026-08-01T00:00:00.000Z"),
@@ -113,7 +125,7 @@ describe("listCommitments", () => {
     const laterOpen = await makeCommitment({
       userId: user.id,
       counterpartyPersonId: person.id,
-      sourceArtifactId: artifact.id,
+      sourceArtifactId: laterOpenArtifact.id,
       summary: "Due later",
       status: "open",
       dueAt: new Date("2026-08-20T00:00:00.000Z"),
@@ -121,7 +133,7 @@ describe("listCommitments", () => {
     const overdue = await makeCommitment({
       userId: user.id,
       counterpartyPersonId: person.id,
-      sourceArtifactId: artifact.id,
+      sourceArtifactId: overdueArtifact.id,
       summary: "Overdue",
       status: "overdue",
       dueAt: new Date("2026-08-05T00:00:00.000Z"),
