@@ -6,7 +6,7 @@ export { createArtifact, findArtifactBySourceExternalId } from "./artifacts";
 export type { ArtifactRow } from "./artifacts";
 export { ensureSelfPerson, resolvePerson } from "./people";
 export type { PersonRow } from "./people";
-export { listConnectorCursors } from "./connectors";
+export { listConnectorCursors, upsertConnectorCursor } from "./connectors";
 export type { ConnectorCursorRow } from "./connectors";
 export {
   closeCommitment,

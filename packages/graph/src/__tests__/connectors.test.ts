@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createUser, listConnectorCursors, prisma } from "../index";
+import { createUser, listConnectorCursors, prisma, upsertConnectorCursor } from "../index";
 
 const clerkIds: string[] = [];
 const userIds: string[] = [];
@@ -60,5 +60,49 @@ describe("listConnectorCursors", () => {
     expect(cursor.status).toBe("error");
     expect(cursor.errorMessage).toBe("token expired");
     expect(cursor.lastSyncedAt).toBeNull();
+  });
+});
+
+describe("upsertConnectorCursor", () => {
+  it("creates a cursor row with running status", async () => {
+    const user = await makeUser("cursor_create");
+
+    const cursor = await upsertConnectorCursor({ userId: user.id, source: "github", status: "running" });
+
+    expect(cursor.status).toBe("running");
+    expect(cursor.lastSyncedAt).toBeNull();
+  });
+
+  it("updates the same row on a second call rather than creating another", async () => {
+    const user = await makeUser("cursor_update");
+    await upsertConnectorCursor({ userId: user.id, source: "github", status: "running" });
+    const syncedAt = new Date("2026-08-14T12:00:00.000Z");
+
+    const updated = await upsertConnectorCursor({
+      userId: user.id,
+      source: "github",
+      status: "idle",
+      lastSyncedAt: syncedAt,
+      errorMessage: null,
+    });
+
+    expect(updated.status).toBe("idle");
+    expect(updated.lastSyncedAt).toEqual(syncedAt);
+    const rows = await prisma.connectorCursor.findMany({ where: { userId: user.id, source: "github" } });
+    expect(rows).toHaveLength(1);
+  });
+
+  it("records an error message", async () => {
+    const user = await makeUser("cursor_error");
+
+    const cursor = await upsertConnectorCursor({
+      userId: user.id,
+      source: "github",
+      status: "error",
+      errorMessage: "GitHub is not connected yet.",
+    });
+
+    expect(cursor.status).toBe("error");
+    expect(cursor.errorMessage).toBe("GitHub is not connected yet.");
   });
 });
