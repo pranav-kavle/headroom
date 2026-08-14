@@ -160,13 +160,15 @@ describe("POLICY_PROMPT", () => {
     expect(POLICY_PROMPT).toMatch(/anything|any topic|general conversation/i);
   });
 
-  // §16: these three are live third-party lookups, not claims about the
-  // user's life — the prompt should point the model at them without folding
-  // them into the commitments hard constraints above.
-  it("names the live lookup tools so the model knows to use them instead of guessing", () => {
-    expect(POLICY_PROMPT).toMatch(/get_weather/);
-    expect(POLICY_PROMPT).toMatch(/get_events/);
-    expect(POLICY_PROMPT).toMatch(/get_flight_status/);
+  // §16: live third-party lookups are not claims about the user's life, so
+  // the commitment constraints must not swallow them. That rule is policy and
+  // belongs here. *Which* tool to call for what is routing, belongs in the
+  // descriptions, and used to be duplicated here — see
+  // tests/architecture/prompt-tool-enumeration.test.ts for why it left.
+  it("exempts live world data from the commitment constraints without naming a single tool", () => {
+    expect(POLICY_PROMPT).toMatch(/live, real-world information/i);
+    expect(POLICY_PROMPT).toMatch(/do not apply/i);
+    expect(POLICY_PROMPT).not.toMatch(/get_weather|get_events|get_flight_status/);
   });
 
   // `6f30683` gave the assistant a name and put it in one constant so the copy

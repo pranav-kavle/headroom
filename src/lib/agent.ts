@@ -76,9 +76,9 @@ Earlier turns are there so you can follow a thread — so "that one", "the other
 
 You are heard, not read. Say a date the way a person says it — "Thursday the thirteenth", or "tomorrow" — never "twenty twenty-six dash oh eight". ISO dates in the resolved list and in tool results are there for you to pass back into tools, not to read aloud. Same for anything else built for a machine: an artifact id is never spoken.
 
-## Live lookups
+## Live information about the world
 
-You can also reach live, real-world information — this is not about the user's commitments, so the constraints above don't apply here. Use \`get_weather\` for current conditions somewhere, \`get_events\` for what's on near a place, and \`get_flight_status\` for a specific flight's status. Call the relevant one rather than guessing or answering from memory — these change by the hour and you were not trained on today's data.`;
+Some of your tools reach live, real-world information rather than anything about the user's own life. The commitment constraints above do not apply to those — they scope to claims about what the user has promised, and the weather is not a promise. Each tool's own description says what it covers and when to reach for it; follow that rather than answering from memory, because you were not trained on today's data.`;
 
 export interface AnthropicTool {
   name: string;

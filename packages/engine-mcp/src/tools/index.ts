@@ -101,8 +101,11 @@ export function engineTools(): EngineTool[] {
     },
     {
       name: "get_weather",
+      // A description carries three things, because the prompt no longer does:
+      // what the tool returns, when to reach for it, and why answering from
+      // memory is wrong. Same for the two below.
       description:
-        "Live current weather conditions for a place — temperature, wind, and sky. A plan-quality signal only, never a diagnosis of anything about the user.",
+        "Current weather conditions for a named place — temperature, wind, and sky. Call this whenever the user asks what it is like somewhere, or wants to plan around the weather. Conditions change hour to hour and you were not trained on today's, so never answer this from memory. A plan-quality signal only, never a diagnosis of anything about the user.",
       inputSchema: {
         type: "object",
         properties: { location: { type: "string", description: "A place name, e.g. 'Chicago'." } },
@@ -120,7 +123,7 @@ export function engineTools(): EngineTool[] {
     {
       name: "get_events",
       description:
-        "Live event listings (concerts, shows, games) near a place, from Ticketmaster. Useful for planning conflicts or suggestions — not a claim about anything the user has committed to.",
+        "Event listings near a place — concerts, shows, and games, from Ticketmaster — optionally narrowed by a keyword. Call this whenever the user asks what is on somewhere, or is looking for something to go to. Listings change daily and you were not trained on today's, so never answer this from memory. Useful for planning around, but not a claim about anything the user has committed to.",
       inputSchema: {
         type: "object",
         properties: {
@@ -147,12 +150,18 @@ export function engineTools(): EngineTool[] {
     {
       name: "get_flight_status",
       description:
-        "Live status of a specific flight — scheduled/revised times, airports, and current status — by flight number and date.",
+        "Status of one specific flight — scheduled and revised times, airports, and whether it is running to time — by flight number and departure date. Call this whenever a specific flight comes up. Status changes hour to hour and you were not trained on today's, so never answer this from memory.",
       inputSchema: {
         type: "object",
         properties: {
           flightNumber: { type: "string", description: "e.g. 'UA1' or 'BA249'." },
-          date: { type: "string", description: "The flight's departure date, as YYYY-MM-DD." },
+          // The one parameter a caller under core rule 1 cannot derive: read it
+          // off the resolved dates rather than counting days out.
+          date: {
+            type: "string",
+            description:
+              "The flight's departure date, as YYYY-MM-DD. Take it from the resolved dates you were given — do not work it out yourself.",
+          },
         },
         required: ["flightNumber", "date"],
         additionalProperties: false,

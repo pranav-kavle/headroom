@@ -39,10 +39,8 @@ that was never written. This pass writes it.
 
 - **No extraction.** An `Artifact` is stored; nothing turns it into a
   `Commitment`. That remains §6's job and its precision bar still gates Tier 1.
-- **No tool-enumeration cleanup.** The prompt's "Live lookups" paragraph names
-  `get_weather`/`get_events`/`get_flight_status` and duplicates routing that
-  belongs in the tool descriptions. It is a real defect and it is a separate
-  commit — it changes tool contracts, not prompt assembly.
+- ~~**No tool-enumeration cleanup.**~~ Descoped and then done, as its own
+  commit — see §9.
 - **No turn identity, no `AgentRun`, no policy interceptor, no output
   verifier.** All four are wanted and all four are larger than this.
 - **No cross-session persistence.** Memory here is the history Deepgram already
@@ -270,7 +268,41 @@ Each task is TDD — failing test, minimal implementation, green, commit.
       the turn; `timezone` reaches `EngineContext`.
 - [ ] **9. `npm test` and `npm run build` green.**
 
-## 9. What this does not make true
+## 9. The prompt stops enumerating the registry
+
+The prompt's "Live lookups" paragraph named `get_weather`, `get_events`, and
+`get_flight_status` and restated what each was for. Three costs, and only the
+first is about tokens:
+
+1. **It grows with the registry.** §16's backlog is ~26 read domains and ~13
+   write ones. A paragraph that gains a clause per tool is unmaintainable well
+   before that, and past ~15–20 tools the answer stops being prose at all and
+   becomes tool *selection*.
+2. **It is a second source of truth for routing**, which already lives in the
+   description. Two places to change one behaviour.
+3. **It invalidates the cache it sits in.** `POLICY_PROMPT` is the cached block
+   (§4). Naming tools inside it means every registry change busts the prefix
+   that block exists to protect.
+
+**The line.** What a tool covers and when to reach for it is *routing*, and
+belongs in its description. What the system requires regardless of which tools
+exist is *policy*, and belongs in the prompt. So the class rule stays — live
+world data is not a claim about the user's life, and the commitment
+constraints do not reach it — stated without naming a tool, and therefore
+O(1) as the registry grows.
+
+`get_state` and `get_action_policy` stay named, because the rules are written
+in terms of them: "call `get_state` before any claim" and "you do not decide
+your own autonomy" are core rules 1 and 3, not routing. They are also a fixed
+pair; the growing category is the live lookups, and none of those may appear.
+
+`tests/architecture/prompt-tool-enumeration.test.ts` makes this executable
+rather than a one-time edit, in the same spirit as the port-rule tests: no
+tool marked `external` may appear in `POLICY_PROMPT`, and every `external`
+tool's description must carry its own trigger and its own freshness rule. Add
+the twentieth lookup and the prompt does not change.
+
+## 10. What this does not make true
 
 Verifiable autonomy is still unverified. Nothing checks that a date the agent
 speaks came from the table or a tool result; nothing binds a turn to its
