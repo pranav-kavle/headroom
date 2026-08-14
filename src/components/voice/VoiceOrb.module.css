@@ -1,0 +1,68 @@
+/* The bars cluster. Height comes from --level (written once per frame by
+   VoiceOrb) times a per-bar weight, so one CSS variable drives all five and
+   the shape still reads as a spectrum rather than five copies of one number. */
+
+.orb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--size) * 0.055);
+  width: var(--size);
+  height: var(--size);
+  flex: 0 0 auto;
+  --level: 0;
+}
+
+.orb b {
+  display: block;
+  width: calc(var(--size) * 0.1);
+  border-radius: 999px;
+  background: var(--hr-violet);
+  /* 0.16 is the resting height — the cluster never collapses to nothing, so
+     "connected but silent" still looks different from "not connected". */
+  height: calc(var(--size) * (0.16 + var(--level) * var(--w) * 0.62));
+}
+
+.orb b:nth-child(1) { --w: 0.55; }
+.orb b:nth-child(2) { --w: 0.85; }
+.orb b:nth-child(3) { --w: 1; }
+.orb b:nth-child(4) { --w: 0.8; }
+.orb b:nth-child(5) { --w: 0.5; }
+
+/* No signal to draw yet, and saying so in grey rather than brand violet. */
+.orb[data-status="connecting"] b,
+.orb[data-status="idle"] b {
+  background: var(--hr-ink-3);
+  opacity: 0.5;
+}
+
+/* The engine is working: nobody is speaking, so there is no level to track.
+   A deliberate, obviously-synthetic wait pattern is honest here in a way that
+   animating the same violet bars would not be. */
+.orb[data-status="thinking"] b {
+  background: var(--hr-ink-3);
+  animation: wait 1.1s ease-in-out infinite;
+}
+
+.orb[data-status="thinking"] b:nth-child(2) { animation-delay: 0.11s; }
+.orb[data-status="thinking"] b:nth-child(3) { animation-delay: 0.22s; }
+.orb[data-status="thinking"] b:nth-child(4) { animation-delay: 0.33s; }
+.orb[data-status="thinking"] b:nth-child(5) { animation-delay: 0.44s; }
+
+.orb[data-status="error"] b {
+  background: var(--hr-red);
+}
+
+@keyframes wait {
+  0%, 100% { height: calc(var(--size) * 0.12); }
+  50% { height: calc(var(--size) * 0.3); }
+}
+
+/* globals.css already disables animation wholesale under reduced motion, which
+   removes the thinking pattern above. VoiceOrb compensates by pinning --level
+   per state, so the five states stay distinguishable by silhouette alone. */
+@media (prefers-reduced-motion: reduce) {
+  .orb[data-status="thinking"] b {
+    height: calc(var(--size) * (0.16 + var(--level) * var(--w) * 0.62));
+  }
+}

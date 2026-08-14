@@ -1,129 +1,145 @@
-/* Adapted from prototype/headroom.html's Voice sheet (frame 5), ported to
-   @headroom/tokens variables in place of the prototype's local --violet etc. */
+/* The full-frame voice canvas. Where the sheet spent ~255px of a 640px box on
+   an orb, a status caption and a mic button, the chrome here is a 48px bar, a
+   48px header and a dock — and everything else is transcript. */
 
-.sheet {
-  width: 100%;
+.stage {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* ---------- top bar ---------- */
+.top {
+  flex: none;
+  min-height: calc(48px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 16px 0;
+  display: flex;
   align-items: center;
-  /* Fills whatever height VoiceSheet's capped container gives it; .log below
-     is the part that actually scrolls when the conversation outgrows that. */
+  gap: 8px;
+  border-bottom: 1px solid var(--hr-line-2);
+}
+
+.close {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hr-line-2);
+  color: var(--hr-ink-2);
+  cursor: pointer;
+  transition: opacity 0.1s ease-out;
+}
+
+.close:active {
+  opacity: 0.5;
+}
+
+.close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.title {
+  flex: 1;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+
+/* Balances .close so .title stays optically centred. */
+.spacer {
+  width: 32px;
+  flex: none;
+}
+
+/* ---------- status header ---------- */
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--hr-line-2);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+}
+
+.head .spacer {
+  flex: 1;
+  width: auto;
+}
+
+.status {
+  font-size: 12.5px;
+  font-weight: 620;
+  letter-spacing: 0.01em;
+  color: var(--hr-violet-ink);
+}
+
+.status[data-status="thinking"],
+.status[data-status="idle"] {
+  color: var(--hr-ink-2);
+}
+
+.status[data-status="connecting"] {
+  color: var(--hr-ink-3);
+}
+
+.status[data-status="error"] {
+  color: var(--hr-red);
+  /* An error message is a sentence, not a one-word state — let it wrap rather
+     than pushing the mic indicator off the row. */
+  font-weight: 560;
+  line-height: 1.35;
+}
+
+.micState {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 560;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--hr-violet-bg);
+  color: var(--hr-violet-ink);
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.micState[data-open="false"] {
+  background: var(--hr-line-2);
+  color: var(--hr-ink-3);
+}
+
+.micState svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+}
+
+/* ---------- transcript ---------- */
+.body {
   flex: 1;
   min-height: 0;
-}
-
-.orb {
-  width: 76px;
-  height: 76px;
-  border-radius: 999px;
-  position: relative;
-  flex: 0 0 auto;
-  background: color-mix(in srgb, var(--hr-violet) 10%, transparent);
-  transition: background 0.2s ease;
-}
-
-.orb::before {
-  content: "";
-  position: absolute;
-  inset: 14px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--hr-violet) 18%, transparent);
-  transition: background 0.2s ease;
-}
-
-.orb::after {
-  content: "";
-  position: absolute;
-  inset: 27px;
-  border-radius: 999px;
-  background: var(--hr-violet);
-  transition: background 0.2s ease;
-}
-
-/* Listening: the mic is open and it's the user's turn — an outward ring
-   pulse on the whole orb reads as "I'm capturing you". */
-.orb[data-status="listening"] {
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-/* Connecting: nothing to react to yet — a slow fade on just the core reads
-   as "working", distinct from listening's outward ring. */
-.orb[data-status="connecting"]::after {
-  animation: breathe 1s ease-in-out infinite;
-}
-
-/* Speaking: the agent is talking, not the user — a faster inner bounce
-   reads as output rather than capture, without borrowing listening's ring. */
-.orb[data-status="speaking"]::after {
-  animation: bounce 0.6s ease-in-out infinite;
-}
-
-.orb[data-status="error"] {
-  background: color-mix(in srgb, var(--hr-red) 10%, transparent);
-}
-
-.orb[data-status="error"]::before {
-  background: color-mix(in srgb, var(--hr-red) 18%, transparent);
-}
-
-.orb[data-status="error"]::after {
-  background: var(--hr-red);
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 var(--hr-violet-bg);
-  }
-  50% {
-    box-shadow: 0 0 0 14px var(--hr-violet-bg);
-  }
-}
-
-@keyframes breathe {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
-  }
-}
-
-@keyframes bounce {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.18);
-  }
-}
-
-.listening {
-  text-align: center;
-  font-size: 11px;
-  font-weight: 640;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--hr-violet);
-  margin-top: 14px;
-}
-
-/* The running turn-by-turn log for one session — §6, replacing the single
-   transcript+reply pair a push-to-talk press used to produce. */
-.log {
-  width: 100%;
-  margin-top: 22px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  overflow-y: auto;
-  /* The scrollable region — flex:1 lets it absorb whatever space is left
-     under the fixed-size orb/label above and mic controls below; min-height:0
-     is what stops it from just growing past its flex parent's bound instead. */
+  padding: 16px 20px 6px;
+}
+
+.log {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .placeholder {
@@ -134,62 +150,145 @@
   margin: auto 0;
 }
 
-.transcript p {
-  font-size: 21px;
-  line-height: 1.38;
-  letter-spacing: -0.022em;
-  font-weight: 540;
+/* The user's own words are an echo — confirmation that they were heard, not
+   the thing to be read. The sheet had these at 21px/540, larger than the
+   agent's answer, which put the hierarchy exactly backwards. */
+.user {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+
+.user em {
+  flex: none;
+  width: 26px;
+  padding-top: 3px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hr-ink-3);
+}
+
+.user p {
+  font-size: 14.5px;
+  line-height: 1.42;
+  font-weight: 500;
+  color: var(--hr-ink-2);
+}
+
+/* The answer — the thing the user actually needs to read. */
+.agent p {
+  font-size: 16.5px;
+  line-height: 1.46;
+  letter-spacing: -0.012em;
+  font-weight: 450;
   color: var(--hr-ink);
 }
 
-.micLive {
-  margin-top: auto;
+/* ---------- provenance (core rule 2) ---------- */
+.citations {
+  margin-top: 11px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 9px;
+  gap: 7px;
 }
 
-.micLg {
-  width: 64px;
-  height: 64px;
-  border-radius: 999px;
-  background: var(--hr-violet);
-  border: 0;
+.citation {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  background: var(--hr-surface-2);
+  border: 1px solid var(--hr-line);
+  border-radius: 10px;
+  padding: 8px 11px;
+}
+
+.citationMark {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  border-radius: 5px;
+  background: var(--hr-violet-bg);
+  color: var(--hr-violet);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 0 7px var(--hr-violet-bg);
-  cursor: pointer;
-  touch-action: none;
 }
 
-.micLg svg {
-  width: 24px;
-  height: 24px;
+.citationMark svg {
+  width: 9px;
+  height: 9px;
 }
 
-.micCap {
-  font-size: 12px;
-  color: var(--hr-ink-3);
-}
-
-/* The agent's spoken answer, shown as well as heard — design doc §9. */
-.reply p {
-  font-size: 15px;
-  line-height: 1.45;
-  color: var(--hr-ink);
-}
-
-/* Provenance for whatever was just said out loud (core rule 2). */
-.citations {
-  margin: 10px 0 0;
-  padding: 0 0 0 14px;
-  list-style: none;
-  border-left: 2px solid var(--hr-line);
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
+.citationQuote {
+  font-size: 12.5px;
   line-height: 1.4;
-  color: var(--hr-ink-3);
+  color: var(--hr-ink-2);
+}
+
+/* Holds the slot while the citation fetch is in flight, so evidence does not
+   appear underneath a reader mid-sentence. Collapses to nothing if the turn
+   turns out to have no citations — one shift, at a predictable moment,
+   instead of one per turn at an unpredictable one. */
+.citationPending {
+  height: 33px;
+  border-radius: 10px;
+  border: 1px dashed var(--hr-line);
+  background: var(--hr-surface-2);
+}
+
+/* ---------- dock ---------- */
+.dock {
+  flex: none;
+  display: flex;
+  gap: 9px;
+  padding: 12px 18px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--hr-line-2);
+}
+
+.dockButton {
+  flex: 1;
+  border: 1px solid var(--hr-line);
+  background: var(--hr-bg);
+  border-radius: 13px;
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 580;
+  color: var(--hr-ink-2);
+  cursor: pointer;
+  transition: opacity 0.1s ease-out, background 0.15s ease, color 0.15s ease;
+}
+
+.dockButton:active {
+  opacity: 0.55;
+}
+
+.dockButton svg {
+  width: 17px;
+  height: 17px;
+}
+
+.dockButton[data-kind="end"] {
+  background: var(--hr-red-bg);
+  border-color: #f1cfcb;
+  color: var(--hr-red);
+}
+
+.dockButton[aria-pressed="true"] {
+  background: var(--hr-violet-bg);
+  border-color: var(--hr-violet-line);
+  color: var(--hr-violet-ink);
+}
+
+.dockButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
