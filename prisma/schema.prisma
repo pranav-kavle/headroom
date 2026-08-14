@@ -299,9 +299,9 @@ model Commitment {
   checkIns                 CheckIn[]
   recommendationOutcomes   RecommendationOutcome[]
 
+  @@unique([userId, sourceArtifactId])
   @@index([userId])
   @@index([counterpartyPersonId])
-  @@index([sourceArtifactId])
   @@index([status])
   @@index([dueAt])
   @@map("commitment")

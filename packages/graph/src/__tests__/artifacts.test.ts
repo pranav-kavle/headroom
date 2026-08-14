@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createArtifact, createUser, prisma } from "../index";
+import { createArtifact, createUser, findArtifactBySourceExternalId, prisma } from "../index";
 
 const clerkIds: string[] = [];
 
@@ -35,5 +35,29 @@ describe("createArtifact", () => {
     expect(artifact.excerpt).toBe("hey so I was thinking we should ship this");
     expect(artifact.occurredAt).toEqual(occurredAt);
     expect(artifact.externalId).toBeNull();
+  });
+});
+
+describe("findArtifactBySourceExternalId", () => {
+  it("finds an artifact created with a matching source and external id", async () => {
+    const user = await makeUser("find_by_external_id");
+    const created = await createArtifact({
+      userId: user.id,
+      source: "github",
+      externalId: "PR_kwDOAbc123",
+      occurredAt: new Date("2026-08-14T00:00:00.000Z"),
+      excerpt: "Fix the thing",
+      url: "https://github.com/acme/repo/pull/1",
+    });
+
+    const found = await findArtifactBySourceExternalId(user.id, "github", "PR_kwDOAbc123");
+
+    expect(found?.id).toBe(created.id);
+  });
+
+  it("returns null when nothing matches", async () => {
+    const user = await makeUser("find_by_external_id_miss");
+
+    expect(await findArtifactBySourceExternalId(user.id, "github", "does-not-exist")).toBeNull();
   });
 });

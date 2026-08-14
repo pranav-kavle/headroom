@@ -4,6 +4,7 @@ import {
   AgentTurnsResponse,
   ApiErrorResponse,
   CompleteOnboardingRequest,
+  GithubSyncResponse,
   HealthResponse,
   MeResponse,
   UserSummary,
@@ -164,5 +165,15 @@ describe("AgentTurnsResponse", () => {
 describe("ApiErrorResponse", () => {
   it("accepts the standard envelope", () => {
     expect(ApiErrorResponse.parse({ error: "Not signed in" }).error).toBe("Not signed in");
+  });
+});
+
+describe("GithubSyncResponse", () => {
+  it("accepts a summary of created and closed counts", () => {
+    expect(GithubSyncResponse.parse({ created: 2, closed: 1 })).toEqual({ created: 2, closed: 1 });
+  });
+
+  it("rejects a missing field", () => {
+    expect(() => GithubSyncResponse.parse({ created: 2 })).toThrow();
   });
 });

@@ -28,3 +28,13 @@ export function createArtifact(input: {
   // Explicit id — see the comment in users.ts createUser for why.
   return prisma.artifact.create({ data: { id: randomUUID(), ...input } });
 }
+
+export function findArtifactBySourceExternalId(
+  userId: string,
+  source: ArtifactSource,
+  externalId: string,
+): Promise<ArtifactRow | null> {
+  return prisma.artifact.findUnique({
+    where: { userId_source_externalId: { userId, source, externalId } },
+  });
+}

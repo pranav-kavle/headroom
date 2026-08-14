@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useClerk } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import { useClerk, useUser } from "@clerk/nextjs";
 import type { ConnectorCursorRow } from "@headroom/graph";
 import { initialsFromEmail } from "@/lib/initials";
 import styles from "./ControlsView.module.css";
@@ -68,6 +69,35 @@ export function ControlsView({
   sources: ConnectorCursorRow[];
 }) {
   const { signOut } = useClerk();
+  const { user } = useUser();
+  const router = useRouter();
+  const githubConnected = user?.externalAccounts?.some((account) => account.provider === "github") ?? false;
+  const [githubSyncing, setGithubSyncing] = useState(false);
+  const [githubSyncError, setGithubSyncError] = useState<string | null>(null);
+
+  async function connectGithub() {
+    if (!user) return;
+    const account = await user.createExternalAccount({
+      strategy: "oauth_github",
+      additionalScopes: ["repo"],
+      redirectUrl: "/controls",
+    });
+    const redirectUrl = account.verification?.externalVerificationRedirectURL;
+    if (redirectUrl) window.location.href = redirectUrl.toString();
+  }
+
+  async function syncGithubNow() {
+    setGithubSyncing(true);
+    setGithubSyncError(null);
+    const response = await fetch("/api/v1/integrations/github/sync", { method: "POST" }).catch(() => null);
+    setGithubSyncing(false);
+    if (!response?.ok) {
+      setGithubSyncError("Sync failed. Try again?");
+      return;
+    }
+    router.refresh();
+  }
+
   const [tier1State, setTier1State] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(TIER_1_ACTIONS.map((action) => [action.key, action.defaultOn])),
   );
@@ -91,7 +121,11 @@ export function ControlsView({
       <div className={styles.gtitle}>Sources</div>
       <div className={styles.card}>
         {SOURCES.map((source) => {
-          const { detail, warn, soon } = describeSource(sourceByKey.get(source.key));
+          const cursor = sourceByKey.get(source.key);
+          const { detail, warn, soon } = describeSource(cursor);
+          const isGithub = source.key === "github";
+          const showConnected = isGithub && githubConnected;
+
           return (
             <div className={styles.arow} key={source.key}>
               <div className={styles.srowIcon} style={{ background: source.color }}>
@@ -99,18 +133,44 @@ export function ControlsView({
               </div>
               <div className={styles.t}>
                 <b>{source.label}</b>
-                <em>{detail}</em>
+                <em>
+                  {showConnected
+                    ? (cursor ? detail : "Connected, not yet synced")
+                    : detail}
+                  {isGithub && githubSyncError && ` — ${githubSyncError}`}
+                </em>
               </div>
-              {warn && <div className={styles.warnpill}>Reconnect</div>}
-              {soon && <div className={styles.lockpill}>Soon</div>}
+              {isGithub ? (
+                githubConnected ? (
+                  <button
+                    type="button"
+                    className={styles.lockpill}
+                    onClick={syncGithubNow}
+                    disabled={githubSyncing}
+                  >
+                    {githubSyncing ? "Syncing…" : "Sync now"}
+                  </button>
+                ) : (
+                  <button type="button" className={styles.lockpill} onClick={connectGithub}>
+                    Connect
+                  </button>
+                )
+              ) : (
+                <>
+                  {warn && <div className={styles.warnpill}>Reconnect</div>}
+                  {soon && <div className={styles.lockpill}>Soon</div>}
+                </>
+              )}
             </div>
           );
         })}
       </div>
-      <p className={styles.footnote}>
-        Connecting sources is what I&rsquo;m being taught next. Until one is live there&rsquo;s
-        nothing for me to read, so your Brief will stay quiet.
-      </p>
+      {!githubConnected && sources.length === 0 && (
+        <p className={styles.footnote}>
+          Connecting sources is what I&rsquo;m being taught next. Until one is live there&rsquo;s
+          nothing for me to read, so your Brief will stay quiet.
+        </p>
+      )}
 
       <div className={styles.gtitle}>What Headroom may do on its own</div>
 
