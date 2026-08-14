@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useClerk, useUser } from "@clerk/nextjs";
+import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import type { ConnectorCursorRow } from "@headroom/graph";
 import { initialsFromEmail } from "@/lib/initials";
 import styles from "./ControlsView.module.css";
@@ -77,13 +78,27 @@ export function ControlsView({
 
   async function connectGithub() {
     if (!user) return;
-    const account = await user.createExternalAccount({
-      strategy: "oauth_github",
-      additionalScopes: ["repo"],
-      redirectUrl: "/controls",
-    });
-    const redirectUrl = account.verification?.externalVerificationRedirectURL;
-    if (redirectUrl) window.location.href = redirectUrl.toString();
+    setGithubSyncError(null);
+    try {
+      const account = await user.createExternalAccount({
+        strategy: "oauth_github",
+        additionalScopes: ["repo"],
+        redirectUrl: "/controls",
+      });
+      const redirectUrl = account.verification?.externalVerificationRedirectURL;
+      if (redirectUrl) {
+        window.location.href = redirectUrl.toString();
+      } else {
+        console.error("[controls/github] createExternalAccount returned no redirect URL", account);
+        setGithubSyncError("Couldn't start GitHub connection. Try again?");
+      }
+    } catch (error) {
+      console.error("[controls/github] createExternalAccount failed", error);
+      const message = isClerkAPIResponseError(error)
+        ? error.errors[0]?.longMessage ?? error.errors[0]?.message
+        : undefined;
+      setGithubSyncError(message ?? "Couldn't start GitHub connection. Try again?");
+    }
   }
 
   async function syncGithubNow() {
