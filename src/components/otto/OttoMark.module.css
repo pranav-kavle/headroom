@@ -1,0 +1,43 @@
+.mark {
+  display: block;
+  border-radius: 999px;
+  background: var(--hr-violet);
+  position: relative;
+}
+
+.mark[data-size="lg"] {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  box-shadow: 0 8px 22px rgba(91, 79, 233, 0.26);
+}
+
+.mark[data-size="lg"]::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 19px;
+  height: 3px;
+  background: #fff;
+  border-radius: 3px;
+  box-shadow: 0 8px 0 rgba(255, 255, 255, 0.5);
+}
+
+.mark[data-size="sm"] {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+}
+
+.mark[data-size="sm"]::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 8px;
+  height: 2px;
+  background: #fff;
+  border-radius: 2px;
+  box-shadow: 0 4px 0 rgba(255, 255, 255, 0.5);
+}

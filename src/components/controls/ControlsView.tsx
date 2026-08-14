@@ -42,18 +42,31 @@ const TIER_1_ACTIONS: Tier1Action[] = [
 
 const TIER_2_ACTIONS = ["Send a drafted reply", "Decline or move a meeting", "Comment on a PR"];
 
-function describeSource(cursor: ConnectorCursorRow | undefined): { detail: string; warn: boolean } {
-  if (!cursor) return { detail: "Not connected", warn: false };
+type SourceState = { detail: string; warn: boolean; soon: boolean };
+
+// No cursor means the connector has never run — which today means it does not
+// exist yet. Saying "Not connected" next to no way to connect it reads as a
+// broken button; "Soon" is the truth.
+function describeSource(cursor: ConnectorCursorRow | undefined): SourceState {
+  if (!cursor) return { detail: "Not connected yet", warn: false, soon: true };
   if (cursor.status === "error") {
-    return { detail: cursor.errorMessage ?? "Reconnect needed", warn: true };
+    return { detail: cursor.errorMessage ?? "Reconnect needed", warn: true, soon: false };
   }
   if (cursor.lastSyncedAt) {
-    return { detail: `Synced ${cursor.lastSyncedAt.toLocaleString()}`, warn: false };
+    return { detail: `Synced ${cursor.lastSyncedAt.toLocaleString()}`, warn: false, soon: false };
   }
-  return { detail: "Connected, not yet synced", warn: false };
+  return { detail: "Connected, not yet synced", warn: false, soon: false };
 }
 
-export function ControlsView({ email, sources }: { email: string; sources: ConnectorCursorRow[] }) {
+export function ControlsView({
+  email,
+  name,
+  sources,
+}: {
+  email: string;
+  name: string;
+  sources: ConnectorCursorRow[];
+}) {
   const { signOut } = useClerk();
   const [tier1State, setTier1State] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(TIER_1_ACTIONS.map((action) => [action.key, action.defaultOn])),
@@ -70,14 +83,15 @@ export function ControlsView({ email, sources }: { email: string; sources: Conne
       <div className={styles.acctHead}>
         <div className={styles.avLg}>{initialsFromEmail(email)}</div>
         <div className={styles.n}>
-          <b>{email}</b>
+          <b>{name}</b>
+          <em>{email}</em>
         </div>
       </div>
 
       <div className={styles.gtitle}>Sources</div>
       <div className={styles.card}>
         {SOURCES.map((source) => {
-          const { detail, warn } = describeSource(sourceByKey.get(source.key));
+          const { detail, warn, soon } = describeSource(sourceByKey.get(source.key));
           return (
             <div className={styles.arow} key={source.key}>
               <div className={styles.srowIcon} style={{ background: source.color }}>
@@ -88,10 +102,15 @@ export function ControlsView({ email, sources }: { email: string; sources: Conne
                 <em>{detail}</em>
               </div>
               {warn && <div className={styles.warnpill}>Reconnect</div>}
+              {soon && <div className={styles.lockpill}>Soon</div>}
             </div>
           );
         })}
       </div>
+      <p className={styles.footnote}>
+        Connecting sources is what I&rsquo;m being taught next. Until one is live there&rsquo;s
+        nothing for me to read, so your Brief will stay quiet.
+      </p>
 
       <div className={styles.gtitle}>What Headroom may do on its own</div>
 

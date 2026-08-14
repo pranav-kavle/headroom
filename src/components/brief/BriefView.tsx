@@ -3,19 +3,47 @@ import type { CommitmentRow } from "@headroom/graph";
 import { isNeedsYou, isOnTrack, isWaitingOnOthers } from "@/lib/commitment-groups";
 import { STATUS_LABELS, pillTone } from "@/lib/commitment-status";
 import { formatShortDate, sourceLabel } from "@/lib/format";
+import { formatDateLabel, timeOfDayGreeting } from "@/lib/greeting";
+import { OttoNote } from "@/components/otto/OttoNote";
+import { PendingList } from "@/components/otto/PendingList";
 import styles from "./BriefView.module.css";
 
 const ON_TRACK_VISIBLE = 3;
 
-export function BriefView({ commitments }: { commitments: CommitmentRow[] }) {
+const WILL_APPEAR = [
+  "Promises you've made, with the quote you made them in",
+  "What's at risk, and why — before it's late",
+  "What you're owed, and who's gone quiet",
+];
+
+export function BriefView({
+  commitments,
+  name,
+  timeZone,
+}: {
+  commitments: CommitmentRow[];
+  name: string;
+  timeZone: string | null;
+}) {
+  // An empty graph is the *normal* first state, not an error — so it greets
+  // you, says plainly that it hasn't read anything, and offers the one action
+  // that changes that.
   if (commitments.length === 0) {
+    const now = new Date();
     return (
       <main className={styles.screen}>
-        <div className={styles.eyebrow}>Brief</div>
-        <div className={styles.display}>Nothing here yet.</div>
-        <div className={styles.empty}>
-          Headroom hasn&rsquo;t found any commitments to track yet.
+        <div className={styles.eyebrow}>{formatDateLabel(now, timeZone)}</div>
+        <div className={styles.display}>
+          {timeOfDayGreeting(now, timeZone)}, {name}.
         </div>
+        <div className={styles.sub}>Nothing to report &mdash; I haven&rsquo;t read anything yet.</div>
+
+        <OttoNote action={{ label: "Connect a source", href: "/controls" }}>
+          Give me a source and I&rsquo;ll go looking. Gmail is where most promises actually get
+          made &mdash; it takes about five minutes to read your last 90 days.
+        </OttoNote>
+
+        <PendingList title="What'll show up here" items={WILL_APPEAR} />
       </main>
     );
   }

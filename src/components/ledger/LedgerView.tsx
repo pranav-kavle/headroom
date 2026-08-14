@@ -1,5 +1,13 @@
 import type { ActionRow } from "@headroom/graph";
+import { OttoNote } from "@/components/otto/OttoNote";
+import { PendingList } from "@/components/otto/PendingList";
 import styles from "./LedgerView.module.css";
+
+const WILL_APPEAR = [
+  "Replies drafted for you, saved but never sent",
+  "Time held on your calendar, only in free slots",
+  "Email triaged and GitHub issues tidied",
+];
 
 function actionTime(action: ActionRow): Date {
   return action.executedAt ?? action.agentRun.startedAt;
@@ -46,11 +54,20 @@ export function LedgerView({ actions }: { actions: ActionRow[] }) {
   return (
     <main className={styles.screen}>
       <div className={styles.eyebrow}>Ledger</div>
-      <div className={styles.display}>{todayCount} actions today.</div>
+      <div className={styles.display}>
+        {actions.length === 0 ? "Nothing done on its own." : `${todayCount} actions today.`}
+      </div>
       <div className={styles.sub}>All reversible. Nothing left this device without you approving it.</div>
 
       {actions.length === 0 ? (
-        <div className={styles.empty}>Nothing logged yet.</div>
+        <>
+          <OttoNote>
+            Nothing logged yet, and there won&rsquo;t be until I&rsquo;ve read enough of your
+            week to be right about it. When I do act on my own, every action lands here with an
+            Undo next to it.
+          </OttoNote>
+          <PendingList title="What gets logged here" items={WILL_APPEAR} />
+        </>
       ) : (
         <div className={styles.timeline}>
           {groups.map((group, i) => (

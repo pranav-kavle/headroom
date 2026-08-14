@@ -4,6 +4,7 @@ import { AgentTokenResponse, AgentTurnCitationsResponse, HealthResponse, MeRespo
 import { recordCitations } from "@/lib/agent-think-citations";
 
 const getOrCreateUser = vi.fn();
+const completeOnboarding = vi.fn();
 const listUsers = vi.fn();
 const pingDatabase = vi.fn();
 const listCommitments = vi.fn();
@@ -17,6 +18,7 @@ vi.mock("@headroom/graph", () => ({
   listUsers: () => listUsers(),
   pingDatabase: () => pingDatabase(),
   listCommitments: (userId: string) => listCommitments(userId),
+  completeOnboarding: (userId: string, input: unknown) => completeOnboarding(userId, input),
 }));
 vi.mock("@/lib/voice-agent-token", () => ({
   mintDeepgramAgentToken: () => mintDeepgramAgentToken(),
@@ -34,6 +36,10 @@ const USER_ROW = {
   id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
   clerkUserId: "user_abc",
   email: "pranav@example.com",
+  displayName: "Pranav",
+  role: null,
+  timezone: null,
+  onboardedAt: new Date("2026-08-13T14:00:00.000Z"),
   createdAt: new Date("2026-08-11T09:30:00.000Z"),
 };
 
@@ -93,6 +99,83 @@ describe("GET /api/v1/me", () => {
 
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "Not signed in" });
+  });
+});
+
+describe("PATCH /api/v1/me", () => {
+  function patch(body: unknown) {
+    return new NextRequest("http://localhost/api/v1/me", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("stores the onboarding answers and returns the updated user", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    completeOnboarding.mockResolvedValue({
+      ...USER_ROW,
+      displayName: "Pranav",
+      role: "Corporate lawyer at Sidley",
+      timezone: "America/New_York",
+      onboardedAt: new Date("2026-08-13T14:00:00.000Z"),
+    });
+    const { PATCH } = await import("../me/route");
+
+    const response = await PATCH(
+      patch({
+        displayName: "Pranav",
+        role: "Corporate lawyer at Sidley",
+        timezone: "America/New_York",
+      }),
+    );
+    const body = MeResponse.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(completeOnboarding).toHaveBeenCalledWith(USER_ROW.id, {
+      displayName: "Pranav",
+      role: "Corporate lawyer at Sidley",
+      timezone: "America/New_York",
+    });
+    expect(body.user.displayName).toBe("Pranav");
+    expect(body.user.onboardedAt).toBe("2026-08-13T14:00:00.000Z");
+  });
+
+  it("accepts a skipped second card", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    completeOnboarding.mockResolvedValue({
+      ...USER_ROW,
+      displayName: "Pranav",
+      onboardedAt: new Date("2026-08-13T14:00:00.000Z"),
+    });
+    const { PATCH } = await import("../me/route");
+
+    const response = await PATCH(patch({ displayName: "Pranav" }));
+    const body = MeResponse.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(body.user.role).toBeNull();
+    expect(body.user.timezone).toBeNull();
+  });
+
+  it("rejects an empty name with 400 and writes nothing", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    const { PATCH } = await import("../me/route");
+
+    const response = await PATCH(patch({ displayName: "   " }));
+
+    expect(response.status).toBe(400);
+    expect(completeOnboarding).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when signed out", async () => {
+    getOrCreateUser.mockResolvedValue(null);
+    const { PATCH } = await import("../me/route");
+
+    const response = await PATCH(patch({ displayName: "Pranav" }));
+
+    expect(response.status).toBe(401);
+    expect(completeOnboarding).not.toHaveBeenCalled();
   });
 });
 

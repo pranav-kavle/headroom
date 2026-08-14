@@ -5,7 +5,15 @@ import Link from "next/link";
 import type { CommitmentRow } from "@headroom/graph";
 import { formatShortDate, isWithinDays, sourceLabel } from "@/lib/format";
 import { isNeedsYou, isOnTrack, isWaitingOnOthers } from "@/lib/commitment-groups";
+import { OttoNote } from "@/components/otto/OttoNote";
+import { PendingList } from "@/components/otto/PendingList";
 import styles from "./CommitmentsView.module.css";
+
+const WILL_APPEAR = [
+  "Everything you owe, grouped overdue / this week / later",
+  "Everything you're owed, and who's gone quiet on it",
+  "What's already closed, and the evidence that closed it",
+];
 
 const SEGMENTS = ["All", "Needs you", "Waiting on others", "Done"] as const;
 type Segment = (typeof SEGMENTS)[number];
@@ -80,7 +88,9 @@ export function CommitmentsView({ commitments }: { commitments: CommitmentRow[] 
   return (
     <main className={styles.screen}>
       <div className={styles.eyebrow}>Commitments</div>
-      <div className={styles.display}>{counts.open} open.</div>
+      <div className={styles.display}>
+        {commitments.length === 0 ? "Nothing to track yet." : `${counts.open} open.`}
+      </div>
       {counts.open > 0 && (
         <div className={styles.sub}>
           {counts.needsYou} need you. {counts.onTrack} on track. {counts.waiting} waiting on someone else.
@@ -88,9 +98,13 @@ export function CommitmentsView({ commitments }: { commitments: CommitmentRow[] 
       )}
 
       {commitments.length === 0 ? (
-        <div className={styles.empty}>
-          Nothing here yet — Headroom hasn&rsquo;t found any commitments to track.
-        </div>
+        <>
+          <OttoNote action={{ label: "Connect a source", href: "/controls" }}>
+            This fills up on its own. You never type a promise in here &mdash; I read them from
+            wherever you actually made them, and every one keeps a link back to the original.
+          </OttoNote>
+          <PendingList title="Once I've read something" items={WILL_APPEAR} />
+        </>
       ) : (
         <>
           <div className={styles.search}>

@@ -1,0 +1,260 @@
+.page {
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  background: var(--hr-bg);
+  padding: calc(20px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right))
+    calc(24px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
+}
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- step indicator ---------- */
+
+.steps {
+  display: flex;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.steps i {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--hr-line);
+  flex: 1;
+  transition: background 220ms ease;
+}
+
+.steps i[data-on="true"] {
+  background: var(--hr-violet);
+}
+
+/* ---------- the card body ---------- */
+
+.body {
+  margin-top: 44px;
+}
+
+.headline {
+  font-size: 27px;
+  line-height: 1.16;
+  letter-spacing: -0.03em;
+  font-weight: 660;
+  color: var(--hr-ink);
+  margin-top: 26px;
+}
+
+.headline:first-child {
+  margin-top: 0;
+}
+
+.sub {
+  font-size: 14.5px;
+  color: var(--hr-ink-2);
+  line-height: 1.52;
+  margin-top: 12px;
+}
+
+/* ---------- the one big field ---------- */
+
+.field {
+  margin-top: 30px;
+}
+
+.field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 640;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--hr-ink-3);
+  margin-bottom: 11px;
+}
+
+.field input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1.5px solid var(--hr-ink);
+  background: 0;
+  padding: 0 0 11px;
+  font-family: inherit;
+  font-size: 25px;
+  font-weight: 620;
+  letter-spacing: -0.028em;
+  color: var(--hr-ink);
+  border-radius: 0;
+}
+
+.field input::placeholder {
+  color: var(--hr-ink-3);
+  font-weight: 560;
+}
+
+.field input:focus-visible {
+  outline: 0;
+  border-bottom-color: var(--hr-violet);
+}
+
+.field input[data-size="mid"] {
+  font-size: 19px;
+  font-weight: 580;
+  letter-spacing: -0.02em;
+}
+
+.hint {
+  font-size: 12.5px;
+  color: var(--hr-ink-3);
+  margin-top: 11px;
+  line-height: 1.45;
+}
+
+/* ---------- shown, never asked ---------- */
+
+.derived {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-top: 26px;
+  padding: 13px 14px;
+  border: 1px solid var(--hr-line);
+  border-radius: var(--hr-radius-md);
+  background: var(--hr-surface-2);
+  font-size: 13.5px;
+}
+
+.derived .zone {
+  flex: 1;
+  color: var(--hr-ink-2);
+}
+
+.derived .zone b {
+  font-weight: 600;
+  color: var(--hr-ink);
+  letter-spacing: -0.01em;
+}
+
+.change {
+  background: 0;
+  border: 0;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 620;
+  color: var(--hr-violet-ink);
+  cursor: pointer;
+  padding: 0;
+}
+
+.zoneSelect {
+  width: 100%;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--hr-ink);
+  background: #fff;
+  border: 1px solid var(--hr-line);
+  border-radius: var(--hr-radius-md);
+  padding: 12px 13px;
+  margin-top: 26px;
+}
+
+/* ---------- what happens next ---------- */
+
+.next {
+  margin-top: 28px;
+  border: 1px solid var(--hr-line);
+  border-radius: var(--hr-radius-md);
+  overflow: hidden;
+}
+
+.next li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 15px;
+  border-bottom: 1px solid var(--hr-line-2);
+  font-size: 13.5px;
+  color: var(--hr-ink-2);
+  line-height: 1.5;
+}
+
+.next li:last-child {
+  border-bottom: 0;
+}
+
+.next b {
+  color: var(--hr-ink);
+  font-weight: 600;
+}
+
+.next .n {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--hr-violet-bg);
+  color: var(--hr-violet-ink);
+  flex: 0 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+/* ---------- footer ---------- */
+
+.foot {
+  margin-top: auto;
+  padding: 16px 0 14px;
+}
+
+.submit {
+  width: 100%;
+  background: var(--hr-violet);
+  color: #fff;
+  border: 0;
+  border-radius: 13px;
+  padding: 15px;
+  font-size: 15.5px;
+  font-weight: 620;
+  font-family: inherit;
+  cursor: pointer;
+  letter-spacing: -0.014em;
+}
+
+.submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.skip {
+  width: 100%;
+  background: 0;
+  border: 0;
+  color: var(--hr-ink-3);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 14px 0 0;
+  cursor: pointer;
+}
+
+.note {
+  font-size: 12.5px;
+  color: var(--hr-ink-3);
+  text-align: center;
+  line-height: 1.5;
+  margin-top: 12px;
+}
+
+.error {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--hr-red);
+  background: var(--hr-red-bg);
+  border-radius: 10px;
+  padding: 10px 12px;
+}

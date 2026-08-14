@@ -3,6 +3,7 @@ import {
   AgentTokenResponse,
   AgentTurnCitationsResponse,
   ApiErrorResponse,
+  CompleteOnboardingRequest,
   HealthResponse,
   MeResponse,
   UserSummary,
@@ -13,6 +14,15 @@ const VALID_USER = {
   id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
   email: "pranav@example.com",
   createdAt: "2026-08-11T09:30:00.000Z",
+};
+
+// /me carries the onboarding answers on top of the summary; /users does not.
+const VALID_ME_USER = {
+  ...VALID_USER,
+  displayName: "Pranav",
+  role: null,
+  timezone: "America/New_York",
+  onboardedAt: "2026-08-13T14:00:00.000Z",
 };
 
 describe("UserSummary", () => {
@@ -35,7 +45,23 @@ describe("UserSummary", () => {
 
 describe("MeResponse / UsersResponse", () => {
   it("wraps a single user", () => {
-    expect(MeResponse.parse({ user: VALID_USER }).user.email).toBe(VALID_USER.email);
+    expect(MeResponse.parse({ user: VALID_ME_USER }).user.email).toBe(VALID_USER.email);
+  });
+
+  it("carries a not-yet-onboarded user as nulls, not as absent keys", () => {
+    const fresh = {
+      ...VALID_USER,
+      displayName: null,
+      role: null,
+      timezone: null,
+      onboardedAt: null,
+    };
+
+    expect(MeResponse.parse({ user: fresh }).user.onboardedAt).toBeNull();
+  });
+
+  it("rejects a /me user missing the profile fields", () => {
+    expect(MeResponse.safeParse({ user: VALID_USER }).success).toBe(false);
   });
 
   it("wraps a list of users", () => {
@@ -43,7 +69,35 @@ describe("MeResponse / UsersResponse", () => {
   });
 
   it("rejects a missing wrapper key", () => {
-    expect(MeResponse.safeParse(VALID_USER).success).toBe(false);
+    expect(MeResponse.safeParse(VALID_ME_USER).success).toBe(false);
+  });
+});
+
+describe("CompleteOnboardingRequest", () => {
+  it("accepts a name alone — the second card is skippable", () => {
+    expect(CompleteOnboardingRequest.parse({ displayName: "Pranav" })).toEqual({
+      displayName: "Pranav",
+    });
+  });
+
+  it("trims before it validates, so whitespace is not a name", () => {
+    expect(CompleteOnboardingRequest.safeParse({ displayName: "   " }).success).toBe(false);
+  });
+
+  it("accepts explicit nulls for the optional answers", () => {
+    const parsed = CompleteOnboardingRequest.parse({
+      displayName: "Pranav",
+      role: null,
+      timezone: null,
+    });
+
+    expect(parsed.role).toBeNull();
+  });
+
+  it("rejects a name longer than the column allows for", () => {
+    expect(
+      CompleteOnboardingRequest.safeParse({ displayName: "x".repeat(81) }).success,
+    ).toBe(false);
   });
 });
 
