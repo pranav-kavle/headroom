@@ -33,6 +33,10 @@ export interface EngineContext {
   userId: string;
   now: Date;
   listCommitments: (userId: string) => Promise<StateCommitmentInput[]>;
+  // The user's IANA zone (2026-08-13 spec §4.2). A calendar day is meaningless
+  // without one, and the engine owns every date the model is allowed to say —
+  // so it has to own the zone they are resolved in too. Absent means UTC.
+  timezone?: string;
   tier1Unattended?: boolean;
   // Live third-party lookups (§16) — injected so tests never hit the network,
   // and so the app layer (not the engine) owns key resolution, same as every
@@ -70,6 +74,7 @@ export function engineTools(): EngineTool[] {
       handler: async (_input, context): Promise<EngineState> =>
         buildState({
           now: context.now,
+          timezone: context.timezone,
           commitments: await context.listCommitments(context.userId),
         }),
     },
