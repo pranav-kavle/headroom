@@ -23,6 +23,65 @@ export function latestUserTranscript(request: ChatCompletionRequest): string {
   return "";
 }
 
+// Below this, an utterance is left alone: "yes", "the deck", "go ahead" are
+// ordinary replies that trivially appear inside the agent's own last turn, and
+// an echo that short can't carry enough content to send the agent off on a
+// self-sustaining tangent anyway.
+const ECHO_MIN_WORDS = 4;
+
+function normalizeForEchoCompare(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      // Apostrophes are dropped rather than spaced out, so the TTS text's
+      // "I'll" still matches whatever the transcriber wrote it back as —
+      // spacing it would split the contraction into "i ll" and never match.
+      .replace(/['‘’]/g, "")
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+// Deepgram's recommended software-level echo defence, and the only one that
+// holds regardless of acoustics: compare the STT output against the TTS text
+// the agent just spoke and discard on a match. `voice-session.ts`'s mic gate is
+// the primary fix — this is the backstop for what a speakerphone, a reflective
+// room, or an AEC that hasn't converged yet still lets through.
+//
+// Containment rather than equality, because the mic typically catches only part
+// of the agent's sentence: the transcript is a slice of the reply, not a copy.
+export function isEchoOfPrecedingAgentTurn(request: ChatCompletionRequest): boolean {
+  const messages = request.messages;
+
+  let userIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") {
+      userIndex = i;
+      break;
+    }
+  }
+  if (userIndex < 0) return false;
+
+  // Only the agent turn directly before this one counts. An intervening user
+  // turn means the user has spoken since, so a later match is them quoting the
+  // agent back rather than the speaker bleeding into the mic.
+  let spokenByAgent: string | undefined;
+  for (let i = userIndex - 1; i >= 0; i--) {
+    if (messages[i].role === "user") break;
+    if (messages[i].role === "assistant") {
+      spokenByAgent = messages[i].content;
+      break;
+    }
+  }
+  if (!spokenByAgent) return false;
+
+  const heard = normalizeForEchoCompare(messages[userIndex].content);
+  if (heard.split(" ").filter(Boolean).length < ECHO_MIN_WORDS) return false;
+
+  return normalizeForEchoCompare(spokenByAgent).includes(heard);
+}
+
 // Deepgram's custom `think` endpoint requires this exact SSE shape — a plain
 // JSON chat-completion body runs fine but is never spoken, confirmed live via
 // the container logs (real text returned every time, nothing ever reached

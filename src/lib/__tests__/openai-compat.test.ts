@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { latestUserTranscript, toChatCompletionStream } from "../openai-compat";
+import { isEchoOfPrecedingAgentTurn, latestUserTranscript, toChatCompletionStream } from "../openai-compat";
 
 async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
   const reader = stream.getReader();
@@ -63,5 +63,79 @@ describe("toChatCompletionStream", () => {
     const body = await readAll(toChatCompletionStream("", "headroom-agent"));
 
     expect(body).toContain("data: [DONE]");
+  });
+});
+
+// Defence in depth behind the mic gate, and the one echo defence that holds
+// regardless of acoustics — Deepgram recommends it directly: compare the STT
+// output against the TTS text the agent just spoke, and discard on a match.
+// The mic gate is the primary fix; this catches whatever a speakerphone, a
+// reflective room, or an unconverged AEC still gets through.
+describe("isEchoOfPrecedingAgentTurn", () => {
+  it("flags a user turn that is a verbatim slice of what the agent just said", () => {
+    expect(
+      isEchoOfPrecedingAgentTurn({
+        messages: [
+          { role: "assistant", content: "You owe Maya the deck by Friday, and Sam is still waiting on that review." },
+          { role: "user", content: "you owe maya the deck by friday" },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("ignores punctuation and casing differences the transcriber introduces", () => {
+    expect(
+      isEchoOfPrecedingAgentTurn({
+        messages: [
+          { role: "assistant", content: "Sure — I'll hold Thursday at 2pm for you." },
+          { role: "user", content: "sure ill hold thursday at 2pm for you" },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("lets a genuine reply through even when it reuses the agent's words", () => {
+    expect(
+      isEchoOfPrecedingAgentTurn({
+        messages: [
+          { role: "assistant", content: "You owe Maya the deck by Friday." },
+          { role: "user", content: "Move the deck to Monday instead please" },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  // Short utterances are left alone deliberately: "yes", "the deck", "go ahead"
+  // are common real replies that trivially appear inside the agent's own text,
+  // and an echo that short is harmless anyway.
+  it("leaves short utterances alone rather than risk swallowing a real reply", () => {
+    expect(
+      isEchoOfPrecedingAgentTurn({
+        messages: [
+          { role: "assistant", content: "You owe Maya the deck by Friday." },
+          { role: "user", content: "the deck" },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("only compares against the immediately preceding agent turn", () => {
+    expect(
+      isEchoOfPrecedingAgentTurn({
+        messages: [
+          { role: "assistant", content: "You owe Maya the deck by Friday, and Sam wants the review." },
+          { role: "user", content: "Thanks, that's helpful to know" },
+          { role: "user", content: "you owe maya the deck by friday" },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when the agent hasn't spoken yet", () => {
+    expect(
+      isEchoOfPrecedingAgentTurn({
+        messages: [{ role: "user", content: "what am I on the hook for today" }],
+      }),
+    ).toBe(false);
   });
 });
