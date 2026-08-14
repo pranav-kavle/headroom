@@ -8,6 +8,7 @@ const completeOnboarding = vi.fn();
 const listUsers = vi.fn();
 const pingDatabase = vi.fn();
 const listCommitments = vi.fn();
+const createArtifact = vi.fn();
 const mintDeepgramAgentToken = vi.fn();
 const signThinkToken = vi.fn();
 const verifyThinkToken = vi.fn();
@@ -18,13 +19,14 @@ vi.mock("@headroom/graph", () => ({
   listUsers: () => listUsers(),
   pingDatabase: () => pingDatabase(),
   listCommitments: (userId: string) => listCommitments(userId),
+  createArtifact: (input: unknown) => createArtifact(input),
   completeOnboarding: (userId: string, input: unknown) => completeOnboarding(userId, input),
 }));
 vi.mock("@/lib/voice-agent-token", () => ({
   mintDeepgramAgentToken: () => mintDeepgramAgentToken(),
 }));
 vi.mock("@/lib/agent-think-auth", () => ({
-  signThinkToken: (userId: string) => signThinkToken(userId),
+  signThinkToken: (userId: string, options?: unknown) => signThinkToken(userId, options),
   verifyThinkToken: (token: string) => verifyThinkToken(token),
 }));
 vi.mock("@/lib/agent", () => ({ resolveAnthropicApiKey: () => "sk-ant-test" }));
@@ -43,8 +45,18 @@ const USER_ROW = {
   createdAt: new Date("2026-08-11T09:30:00.000Z"),
 };
 
+// 2026-08-13 spec §3 — verifyThinkToken now returns the principal alongside
+// the user id, so the think endpoint never reads the database for it.
+const CLAIMS = {
+  userId: USER_ROW.id,
+  displayName: "Priya Raman",
+  role: "product counsel",
+  timezone: "America/Chicago",
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  createArtifact.mockResolvedValue({ id: "artifact-1" });
 });
 
 describe("GET /api/v1/health", () => {
@@ -210,7 +222,12 @@ describe("POST /api/v1/voice/agent-token", () => {
   });
 
   it("mints Deepgram's connection token and a signed think token when signed in", async () => {
-    getOrCreateUser.mockResolvedValue(USER_ROW);
+    getOrCreateUser.mockResolvedValue({
+      ...USER_ROW,
+      displayName: "Priya Raman",
+      role: "product counsel",
+      timezone: "America/Chicago",
+    });
     mintDeepgramAgentToken.mockResolvedValue({ accessToken: "dg-jwt", expiresInSeconds: 30 });
     signThinkToken.mockReturnValue("signed-think-token");
     const { POST } = await import("../voice/agent-token/route");
@@ -223,7 +240,16 @@ describe("POST /api/v1/voice/agent-token", () => {
       deepgramExpiresInSeconds: 30,
       thinkAuthToken: "signed-think-token",
     });
-    expect(signThinkToken).toHaveBeenCalledWith(USER_ROW.id);
+    // 2026-08-13 spec §3: the principal is embedded at mint time, where the
+    // User row is already in hand, so the think endpoint never reads the
+    // database on the voice hot path.
+    expect(signThinkToken).toHaveBeenCalledWith(USER_ROW.id, {
+      principal: {
+        displayName: "Priya Raman",
+        role: "product counsel",
+        timezone: "America/Chicago",
+      },
+    });
   });
 
   it("returns 502 when Deepgram's grant endpoint fails", async () => {
@@ -277,7 +303,7 @@ describe("POST /api/v1/agent/think", () => {
   });
 
   it("runs the agent turn on the latest user message and streams an OpenAI-shaped reply", async () => {
-    verifyThinkToken.mockReturnValue(USER_ROW.id);
+    verifyThinkToken.mockReturnValue(CLAIMS);
     runAgentTurn.mockResolvedValue({
       text: "You owe Maya the deck.",
       citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
@@ -304,13 +330,97 @@ describe("POST /api/v1/agent/think", () => {
       choices: [{ delta: { role?: string; content?: string } }];
     }>;
     expect(events[0].choices[0].delta).toEqual({ role: "assistant", content: "You owe Maya the deck." });
+    // Spec §5: the whole conversation reaches the turn, not just the last line.
     expect(runAgentTurn).toHaveBeenCalledWith(
-      expect.objectContaining({ transcript: "what do I owe?" }),
+      expect.objectContaining({
+        messages: [{ role: "user", content: "what do I owe?" }],
+        principal: {
+          displayName: "Priya Raman",
+          role: "product counsel",
+          timezone: "America/Chicago",
+        },
+      }),
+    );
+  });
+
+  // 2026-08-13 spec §6. The prompt claims the user's words are already stored;
+  // until now nothing stored them.
+  it("stores the utterance as a voice_note artifact", async () => {
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    runAgentTurn.mockResolvedValue({
+      text: "Got it.",
+      citations: [],
+      refused: false,
+      timings: { totalMs: 5, turns: [] },
+    });
+    const { POST } = await import("../agent/think/route");
+
+    await POST(makeThinkRequest([{ role: "user", content: "I owe Maya the deck" }], "valid"));
+
+    expect(createArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: USER_ROW.id,
+        source: "voice_note",
+        excerpt: "I owe Maya the deck",
+      }),
+    );
+  });
+
+  it("stores nothing when the transcript is blank", async () => {
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    const { POST } = await import("../agent/think/route");
+
+    await POST(makeThinkRequest([{ role: "user", content: "   " }], "valid"));
+
+    expect(createArtifact).not.toHaveBeenCalled();
+    expect(runAgentTurn).not.toHaveBeenCalled();
+  });
+
+  // An echoed turn is the agent's own voice coming back through the mic.
+  // Storing it would attribute Otto's words to the user and poison the graph
+  // that extraction will later read.
+  it("stores nothing when the turn is the agent's own voice echoed back", async () => {
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    const { POST } = await import("../agent/think/route");
+
+    await POST(
+      makeThinkRequest(
+        [
+          { role: "user", content: "what do I owe?" },
+          { role: "assistant", content: "You have nothing on file at the moment." },
+          { role: "user", content: "you have nothing on file at the moment" },
+        ],
+        "valid",
+      ),
+    );
+
+    expect(createArtifact).not.toHaveBeenCalled();
+    expect(runAgentTurn).not.toHaveBeenCalled();
+  });
+
+  // §4.2: the engine resolves dates in the user's zone, and this is where it
+  // learns which zone that is.
+  it("hands the user's timezone to the engine", async () => {
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    runAgentTurn.mockResolvedValue({
+      text: "ok",
+      citations: [],
+      refused: false,
+      timings: { totalMs: 5, turns: [] },
+    });
+    const { POST } = await import("../agent/think/route");
+
+    await POST(makeThinkRequest([{ role: "user", content: "what day is it?" }], "valid"));
+
+    expect(runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({ timezone: "America/Chicago" }),
+      }),
     );
   });
 
   it("makes the turn's citations available for the client to poll", async () => {
-    verifyThinkToken.mockReturnValue(USER_ROW.id);
+    verifyThinkToken.mockReturnValue(CLAIMS);
     runAgentTurn.mockResolvedValue({
       text: "You owe Maya the deck.",
       citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],

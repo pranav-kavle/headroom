@@ -8,6 +8,8 @@
 
 import { engineTools, type EngineContext, type EngineTool } from "@headroom/engine-mcp";
 import { buildTurnParams } from "./agent";
+import type { Principal } from "./principal";
+import type { TurnMessage } from "./openai-compat";
 
 // A turn is: model picks a tool -> engine answers -> model phrases it. Anything
 // beyond a couple of extra hops is a loop, not a conversation.
@@ -94,13 +96,24 @@ function collectCitations(result: unknown, into: Citation[]): void {
 }
 
 export async function runAgentTurn(input: {
-  transcript: string;
+  // The conversation so far, not just the latest utterance (2026-08-13 spec
+  // §5) — the model needs it to resolve "that one", and the policy prompt is
+  // what stops it being treated as evidence.
+  messages: TurnMessage[];
+  principal: Principal;
   context: EngineContext;
   client: MessageCreator;
   tools?: EngineTool[];
 }): Promise<AgentTurnResult> {
   const tools = input.tools ?? engineTools();
-  const base = buildTurnParams({ transcript: input.transcript, tools });
+  const base = buildTurnParams({
+    messages: input.messages,
+    principal: input.principal,
+    // The same instant the engine gets, so the principal block's resolved
+    // dates and `get_state`'s `today` can never disagree.
+    now: input.context.now,
+    tools,
+  });
   const messages: unknown[] = [...base.messages];
   const citations: Citation[] = [];
   const turns: TurnTiming[] = [];

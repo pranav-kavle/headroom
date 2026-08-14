@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { EngineContext, EngineTool } from "@headroom/engine-mcp";
 import { runAgentTurn, type MessageCreator } from "../agent-loop";
 
+const PRINCIPAL = { displayName: "Priya", role: null, timezone: "America/Chicago" };
+
 const CONTEXT: EngineContext = {
   userId: "u1",
   now: new Date("2026-08-12T09:30:00Z"),
@@ -41,7 +43,8 @@ const echoTool: EngineTool = {
 describe("runAgentTurn", () => {
   it("returns the model's text when it answers without a tool", async () => {
     const result = await runAgentTurn({
-      transcript: "hello",
+      messages: [{ role: "user", content: "hello" }],
+      principal: PRINCIPAL,
       context: CONTEXT,
       client: creator(textReply("Nothing on file.")),
       tools: [echoTool],
@@ -54,7 +57,8 @@ describe("runAgentTurn", () => {
     const client = creator(toolReply("get_state"), textReply("You owe Maya the deck."));
 
     const result = await runAgentTurn({
-      transcript: "what do I owe?",
+      messages: [{ role: "user", content: "what do I owe?" }],
+      principal: PRINCIPAL,
       context: CONTEXT,
       client,
       tools: [echoTool],
@@ -68,7 +72,8 @@ describe("runAgentTurn", () => {
   // Citations come off the tool result, never off the model's prose.
   it("collects citations from tool results", async () => {
     const result = await runAgentTurn({
-      transcript: "what do I owe?",
+      messages: [{ role: "user", content: "what do I owe?" }],
+      principal: PRINCIPAL,
       context: CONTEXT,
       client: creator(toolReply("get_state"), textReply("You owe Maya the deck.")),
       tools: [echoTool],
@@ -79,7 +84,8 @@ describe("runAgentTurn", () => {
 
   it("surfaces a refusal instead of returning empty text", async () => {
     const result = await runAgentTurn({
-      transcript: "hello",
+      messages: [{ role: "user", content: "hello" }],
+      principal: PRINCIPAL,
       context: CONTEXT,
       client: creator({ stop_reason: "refusal", content: [] }),
       tools: [echoTool],
@@ -99,7 +105,8 @@ describe("runAgentTurn", () => {
     const client = creator(toolReply("get_state"), textReply("Something went wrong."));
 
     const result = await runAgentTurn({
-      transcript: "what do I owe?",
+      messages: [{ role: "user", content: "what do I owe?" }],
+      principal: PRINCIPAL,
       context: CONTEXT,
       client,
       tools: [exploding],
@@ -121,7 +128,8 @@ describe("runAgentTurn", () => {
     );
 
     await runAgentTurn({
-      transcript: "loop",
+      messages: [{ role: "user", content: "loop" }],
+      principal: PRINCIPAL,
       context: CONTEXT,
       client,
       tools: [echoTool],
@@ -139,7 +147,8 @@ describe("runAgentTurn", () => {
       const hangingClient: MessageCreator = { create: () => new Promise(() => {}) };
 
       const resultPromise = runAgentTurn({
-        transcript: "hello",
+        messages: [{ role: "user", content: "hello" }],
+        principal: PRINCIPAL,
         context: CONTEXT,
         client: hangingClient,
         tools: [echoTool],
@@ -162,7 +171,8 @@ describe("runAgentTurn", () => {
     };
 
     const result = await runAgentTurn({
-      transcript: "hello",
+      messages: [{ role: "user", content: "hello" }],
+      principal: PRINCIPAL,
       context: CONTEXT,
       client: failingClient,
       tools: [echoTool],
@@ -171,9 +181,50 @@ describe("runAgentTurn", () => {
     expect(result.text).toMatch(/trouble|try again/i);
   });
 
+  // 2026-08-13 spec §5/§4. The two things the turn could not previously see:
+  // what was already said, and who is saying it.
+  it("forwards the whole conversation and the principal to the model", async () => {
+    const client = creator(textReply("The deck one."));
+
+    await runAgentTurn({
+      messages: [
+        { role: "user", content: "what do I owe Maya?" },
+        { role: "assistant", content: "Nothing on file." },
+        { role: "user", content: "and the other one?" },
+      ],
+      principal: PRINCIPAL,
+      context: CONTEXT,
+      client,
+      tools: [echoTool],
+    });
+
+    const params = (client.create as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(params.messages).toHaveLength(3);
+    expect(params.messages[1]).toEqual({ role: "assistant", content: "Nothing on file." });
+    expect(params.system[1].text).toContain("Priya");
+  });
+
+  // The principal block's dates and get_state's `today` come from the same
+  // instant, so they cannot contradict each other mid-turn.
+  it("resolves the principal block's dates from the engine's clock", async () => {
+    const client = creator(textReply("ok"));
+
+    await runAgentTurn({
+      messages: [{ role: "user", content: "what day is it?" }],
+      principal: PRINCIPAL,
+      context: CONTEXT,
+      client,
+      tools: [echoTool],
+    });
+
+    const params = (client.create as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(params.system[1].text).toContain("2026-08-12");
+  });
+
   it("records per-leg timings so the latency budget is measured, not guessed", async () => {
     const result = await runAgentTurn({
-      transcript: "what do I owe?",
+      messages: [{ role: "user", content: "what do I owe?" }],
+      principal: PRINCIPAL,
       context: CONTEXT,
       client: creator(toolReply("get_state"), textReply("Done.")),
       tools: [echoTool],

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isEchoOfPrecedingAgentTurn, latestUserTranscript, toChatCompletionStream } from "../openai-compat";
+import {
+  MAX_HISTORY_MESSAGES,
+  isEchoOfPrecedingAgentTurn,
+  latestUserTranscript,
+  toChatCompletionStream,
+  toTurnMessages,
+} from "../openai-compat";
 
 async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
   const reader = stream.getReader();
@@ -32,6 +38,102 @@ describe("latestUserTranscript", () => {
     });
 
     expect(transcript).toBe("");
+  });
+});
+
+// 2026-08-13 spec §5. Deepgram sends the whole conversation on every call and
+// this used to keep only the last user line, so "what about the other one" had
+// nothing to refer to. The history was never unavailable — it was already read,
+// thirty lines below, by the echo check.
+describe("toTurnMessages", () => {
+  it("keeps the whole conversation, oldest first", () => {
+    const messages = toTurnMessages({
+      messages: [
+        { role: "user", content: "what do I owe Maya?" },
+        { role: "assistant", content: "Nothing on file." },
+        { role: "user", content: "and the other one?" },
+      ],
+    });
+
+    expect(messages).toEqual([
+      { role: "user", content: "what do I owe Maya?" },
+      { role: "assistant", content: "Nothing on file." },
+      { role: "user", content: "and the other one?" },
+    ]);
+  });
+
+  // The session opens with a spoken GREETING, so the first `think` call of
+  // every conversation arrives assistant-first — and Anthropic requires the
+  // first message to be a user turn.
+  it("drops a leading assistant greeting", () => {
+    const messages = toTurnMessages({
+      messages: [
+        { role: "assistant", content: "Hey — I'm here. What's on your mind?" },
+        { role: "user", content: "what do I owe?" },
+      ],
+    });
+
+    expect(messages[0]).toEqual({ role: "user", content: "what do I owe?" });
+  });
+
+  // Anthropic requires alternating roles; Deepgram's history does not promise
+  // them — a paused sentence can arrive as two consecutive user turns.
+  it("coalesces consecutive same-role messages", () => {
+    const messages = toTurnMessages({
+      messages: [
+        { role: "user", content: "what do I owe" },
+        { role: "user", content: "Maya, specifically" },
+        { role: "assistant", content: "Nothing" },
+        { role: "assistant", content: "on file." },
+      ],
+    });
+
+    expect(messages).toEqual([
+      { role: "user", content: "what do I owe\nMaya, specifically" },
+      { role: "assistant", content: "Nothing\non file." },
+    ]);
+  });
+
+  it("drops system messages — ours is built here, not taken from Deepgram", () => {
+    const messages = toTurnMessages({
+      messages: [
+        { role: "system", content: "You are a helpful assistant." },
+        { role: "user", content: "hello" },
+      ],
+    });
+
+    expect(messages).toEqual([{ role: "user", content: "hello" }]);
+  });
+
+  it("drops empty and whitespace-only messages", () => {
+    const messages = toTurnMessages({
+      messages: [
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "   " },
+        { role: "user", content: "still there?" },
+      ],
+    });
+
+    expect(messages).toEqual([{ role: "user", content: "hello\nstill there?" }]);
+  });
+
+  it("caps a long session at the most recent messages, still starting on a user turn", () => {
+    const long = Array.from({ length: 61 }, (_, i) => ({
+      role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+      content: `turn ${i}`,
+    }));
+
+    const messages = toTurnMessages({ messages: long });
+
+    expect(messages.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGES);
+    expect(messages[0].role).toBe("user");
+    expect(messages[messages.length - 1]).toEqual({ role: "user", content: "turn 60" });
+  });
+
+  it("returns nothing when there is no user turn at all", () => {
+    expect(toTurnMessages({ messages: [{ role: "assistant", content: "Hey — I'm here." }] })).toEqual(
+      [],
+    );
   });
 });
 

@@ -25,20 +25,49 @@ function signaturesMatch(a: string, b: string): boolean {
   return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
 }
 
+// 2026-08-13 spec §3. The principal rides inside the token rather than being
+// looked up per turn: this endpoint is on the voice hot path, the mint route
+// already holds the `User` row, and the token is already signed and user-bound.
+// A `findUserById` per utterance would buy freshness nobody needs — nobody
+// renames themselves mid-conversation — and pay for it with a database round
+// trip against a 1.5-3s first-audio budget.
+export interface ThinkTokenClaims {
+  userId: string;
+  displayName: string | null;
+  role: string | null;
+  timezone: string | null;
+}
+
 export function signThinkToken(
   userId: string,
-  options: { now?: Date; ttlSeconds?: number; env?: EnvSource } = {},
+  options: {
+    now?: Date;
+    ttlSeconds?: number;
+    env?: EnvSource;
+    principal?: Omit<ThinkTokenClaims, "userId">;
+  } = {},
 ): string {
   const env = options.env ?? process.env;
   const now = options.now ?? new Date();
   const expiresAt = now.getTime() + (options.ttlSeconds ?? DEFAULT_TTL_SECONDS) * 1000;
 
-  const payload = Buffer.from(JSON.stringify({ userId, expiresAt })).toString("base64url");
+  const payload = Buffer.from(
+    JSON.stringify({
+      userId,
+      expiresAt,
+      displayName: options.principal?.displayName ?? null,
+      role: options.principal?.role ?? null,
+      timezone: options.principal?.timezone ?? null,
+    }),
+  ).toString("base64url");
   const signature = sign(payload, resolveSecret(env));
   return `${payload}.${signature}`;
 }
 
-export function verifyThinkToken(token: string, options: { now?: Date; env?: EnvSource } = {}): string {
+export function verifyThinkToken(
+  token: string,
+  options: { now?: Date; env?: EnvSource } = {},
+): ThinkTokenClaims {
   const env = options.env ?? process.env;
   const now = options.now ?? new Date();
 
@@ -52,14 +81,25 @@ export function verifyThinkToken(token: string, options: { now?: Date; env?: Env
     throw new Error("Invalid think token signature");
   }
 
-  const { userId, expiresAt } = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+  // The three principal fields are optional on the way in, so a token minted
+  // before this deploy still verifies — it just yields a nameless principal
+  // rather than forcing every open session to re-auth.
+  const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
     userId: string;
     expiresAt: number;
+    displayName?: string | null;
+    role?: string | null;
+    timezone?: string | null;
   };
 
-  if (now.getTime() > expiresAt) {
+  if (now.getTime() > claims.expiresAt) {
     throw new Error("Think token has expired");
   }
 
-  return userId;
+  return {
+    userId: claims.userId,
+    displayName: claims.displayName ?? null,
+    role: claims.role ?? null,
+    timezone: claims.timezone ?? null,
+  };
 }

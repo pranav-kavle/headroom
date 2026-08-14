@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { listCommitments } from "@headroom/graph";
-import { verifyThinkToken } from "@/lib/agent-think-auth";
+import { verifyThinkToken, type ThinkTokenClaims } from "@/lib/agent-think-auth";
 import { resolveAnthropicApiKey } from "@/lib/agent";
 import { runAgentTurn, type MessageCreator } from "@/lib/agent-loop";
 import { recordCitations } from "@/lib/agent-think-citations";
+import { captureUtterance } from "@/lib/capture";
 import {
   isEchoOfPrecedingAgentTurn,
   latestUserTranscript,
   toChatCompletionStream,
+  toTurnMessages,
   type ChatCompletionRequest,
 } from "@/lib/openai-compat";
 
@@ -26,12 +28,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing bearer token" }, { status: 401 });
   }
 
-  let userId: string;
+  let claims: ThinkTokenClaims;
   try {
-    userId = verifyThinkToken(token);
+    claims = verifyThinkToken(token);
   } catch {
     return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
   }
+  const { userId, ...principal } = claims;
 
   const body = (await request.json()) as ChatCompletionRequest;
   const model = body.model ?? "headroom-agent";
@@ -52,14 +55,29 @@ export async function POST(request: NextRequest) {
 
   const client = new Anthropic({ apiKey: resolveAnthropicApiKey() });
 
+  // One instant for the whole turn: the engine's dates and the principal
+  // block's resolved dates come from here, so they cannot disagree.
+  const now = new Date();
+
+  // 2026-08-13 spec §6. Started before the model call and awaited after it, so
+  // the write hides entirely behind the model's latency. Placed after both
+  // guards above deliberately — an echoed turn is the agent's own voice, and
+  // storing it would attribute Otto's words to the user.
+  const captured = captureUtterance({ userId, transcript, occurredAt: now });
+
   const result = await runAgentTurn({
-    transcript,
+    // Spec §5: the whole conversation, not just the latest line.
+    messages: toTurnMessages(body),
+    principal,
     client: client.messages as unknown as MessageCreator,
     context: {
       userId,
       // The engine owns `now` — core rule 1 means the model never resolves a
       // date itself, so it has to be handed one.
-      now: new Date(),
+      now,
+      // §4.2: a calendar day only exists relative to a zone, and this is the
+      // user's own.
+      timezone: principal.timezone ?? undefined,
       listCommitments: (id) => listCommitments(id),
       // §16's live lookups (get_weather/get_events/get_flight_status). If
       // unset, the tool itself throws a named "key not configured" error
@@ -71,10 +89,12 @@ export async function POST(request: NextRequest) {
 
   recordCitations(userId, result.citations);
 
+  const artifact = await captured;
+
   console.info(
     `[think] total=${result.timings.totalMs}ms turns=${result.timings.turns
       .map((t) => `${t.modelMs}/${t.toolMs}`)
-      .join(" ")} citations=${result.citations.length}`,
+      .join(" ")} citations=${result.citations.length} artifact=${artifact?.id ?? "none"}`,
   );
 
   return new Response(toChatCompletionStream(result.text, model), { headers: SSE_HEADERS });
