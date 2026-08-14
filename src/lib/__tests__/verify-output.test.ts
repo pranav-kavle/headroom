@@ -1,0 +1,128 @@
+import { describe, expect, it } from "vitest";
+import { verifySpokenText } from "../verify-output";
+
+// 2026-08-13 spec (turn identity / policy gate / verifier) §4. Core rule 1 was
+// enforced entirely by asking the model nicely; this is the first thing in the
+// codebase that actually checks.
+
+const EVIDENCE = [
+  JSON.stringify({
+    today: "2026-08-13",
+    openCommitments: [
+      {
+        id: "c1",
+        summary: "Send Maya the deck",
+        dueAt: "2026-08-14",
+        quote: "I'll get Maya the deck by Thursday",
+        sourceArtifactId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      },
+    ],
+    counts: { owedByMe: 1, owedToMe: 0 },
+  }),
+  "Today is Thursday 13 August 2026 (2026-08-13) in America/Chicago.",
+];
+
+describe("verifySpokenText", () => {
+  it("passes a reply whose every figure traces to the evidence", () => {
+    const violations = verifySpokenText({
+      text: "You owe Maya the deck — 1 thing open, due Friday.",
+      evidence: EVIDENCE,
+      aboutUser: true,
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  // Core rule 1: the engine computes. A count the engine never produced is
+  // exactly the failure the rule exists to prevent, and it is invisible in
+  // logs without this.
+  it("catches a number the engine never produced", () => {
+    const violations = verifySpokenText({
+      text: "You have 4 things open this week.",
+      evidence: EVIDENCE,
+      aboutUser: true,
+    });
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0].kind).toBe("unsourced_number");
+    expect(violations[0].detail).toContain("4");
+  });
+
+  // §4: the rule is scoped to claims about the user's life, because core rule 2
+  // is. A verifier that fired on all arithmetic would break the ordinary
+  // conversation the prompt goes out of its way to allow.
+  it("leaves ordinary conversation alone when no claim about the user was made", () => {
+    const violations = verifySpokenText({
+      text: "Two plus two is 4.",
+      evidence: [],
+      aboutUser: false,
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("accepts a figure the user said themselves", () => {
+    const violations = verifySpokenText({
+      text: "Got it — 3 slides by Thursday.",
+      evidence: ["I owe Maya 3 slides by Thursday"],
+      aboutUser: true,
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  // Always on, regardless of topic: these are machine-shaped tokens that
+  // should never reach a speaker at all.
+  it("catches an artifact id read out loud", () => {
+    const violations = verifySpokenText({
+      text: "That came from artifact 3f2504e0-4f89-41d3-9a0c-0305e82c3301.",
+      evidence: EVIDENCE,
+      aboutUser: true,
+    });
+
+    expect(violations.map((v) => v.kind)).toContain("spoke_identifier");
+  });
+
+  it("catches an ISO date read out loud, even though it is in the evidence", () => {
+    const violations = verifySpokenText({
+      text: "It's due 2026-08-14.",
+      evidence: EVIDENCE,
+      aboutUser: true,
+    });
+
+    expect(violations.map((v) => v.kind)).toContain("spoke_machine_date");
+  });
+
+  it("checks identifiers and dates even when the turn was not about the user", () => {
+    const violations = verifySpokenText({
+      text: "The show is on 2026-08-20.",
+      evidence: [],
+      aboutUser: false,
+    });
+
+    expect(violations.map((v) => v.kind)).toEqual(["spoke_machine_date"]);
+  });
+
+  it("reports every distinct problem, not just the first", () => {
+    const violations = verifySpokenText({
+      text: "You have 9 open, the oldest from 2026-08-01.",
+      evidence: EVIDENCE,
+      aboutUser: true,
+    });
+
+    expect(violations.map((v) => v.kind).sort()).toEqual([
+      "spoke_machine_date",
+      "unsourced_number",
+    ]);
+  });
+
+  it("does not flag the same number twice", () => {
+    const violations = verifySpokenText({
+      text: "7 and 7 again.",
+      evidence: [],
+      aboutUser: true,
+    });
+
+    expect(violations).toHaveLength(1);
+  });
+});

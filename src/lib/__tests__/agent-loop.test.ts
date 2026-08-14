@@ -221,6 +221,150 @@ describe("runAgentTurn", () => {
     expect(params.system[1].text).toContain("2026-08-12");
   });
 
+  // 2026-08-13 spec (turn identity / policy gate / verifier) §3. Tier is a
+  // property of the tool, so the model cannot route around the gate by
+  // choosing a gentler tier — it never supplies one.
+  describe("the policy gate", () => {
+    function gatedTool(tier: "tier_1" | "tier_2" | "tier_3", handler = vi.fn()): EngineTool {
+      return {
+        name: "send_reply",
+        description: "test",
+        inputSchema: { type: "object" },
+        tier,
+        handler: handler as unknown as EngineTool["handler"],
+      };
+    }
+
+    it("refuses to execute an outward-facing action, and tells the model why", async () => {
+      const handler = vi.fn();
+      const client = creator(toolReply("send_reply"), textReply("Want me to send it?"));
+
+      const result = await runAgentTurn({
+        messages: [{ role: "user", content: "reply to Maya" }],
+        principal: PRINCIPAL,
+        context: CONTEXT,
+        client,
+        tools: [gatedTool("tier_2", handler)],
+      });
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(result.blocked).toEqual([{ tool: "send_reply", tier: "tier_2", policy: "needs_approval" }]);
+
+      const handback = (client.create as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0];
+      const toolResult = handback.messages[handback.messages.length - 1].content[0];
+      expect(toolResult.content).toContain("needs_approval");
+    });
+
+    it("refuses money and third-party actions outright", async () => {
+      const handler = vi.fn();
+
+      const result = await runAgentTurn({
+        messages: [{ role: "user", content: "book the flight" }],
+        principal: PRINCIPAL,
+        context: CONTEXT,
+        client: creator(toolReply("send_reply"), textReply("I can't book that.")),
+        tools: [gatedTool("tier_3", handler)],
+      });
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(result.blocked[0].policy).toBe("forbidden");
+    });
+
+    // Tier 1 is unattended only once §6's precision bar is met, and the engine
+    // owns that switch — not the model, and not this loop.
+    it("runs a private, reversible action only when the engine says tier 1 is unattended", async () => {
+      const allowed = vi.fn().mockResolvedValue({ ok: true });
+      await runAgentTurn({
+        messages: [{ role: "user", content: "draft it" }],
+        principal: PRINCIPAL,
+        context: { ...CONTEXT, tier1Unattended: true },
+        client: creator(toolReply("send_reply"), textReply("Drafted.")),
+        tools: [gatedTool("tier_1", allowed)],
+      });
+      expect(allowed).toHaveBeenCalled();
+
+      const withheld = vi.fn();
+      const result = await runAgentTurn({
+        messages: [{ role: "user", content: "draft it" }],
+        principal: PRINCIPAL,
+        context: CONTEXT,
+        client: creator(toolReply("send_reply"), textReply("Want me to?")),
+        tools: [gatedTool("tier_1", withheld)],
+      });
+      expect(withheld).not.toHaveBeenCalled();
+      expect(result.blocked[0].policy).toBe("needs_approval");
+    });
+
+    it("leaves reads alone — an undeclared tier is not a gate", async () => {
+      const result = await runAgentTurn({
+        messages: [{ role: "user", content: "what do I owe?" }],
+        principal: PRINCIPAL,
+        context: CONTEXT,
+        client: creator(toolReply("get_state"), textReply("Nothing on file.")),
+        tools: [echoTool],
+      });
+
+      expect(result.blocked).toEqual([]);
+      expect(result.text).toBe("Nothing on file.");
+    });
+  });
+
+  // §4. The last thing between a fabricated figure and a speaker.
+  describe("the output verifier", () => {
+    it("does not speak a reply whose figures trace to nothing", async () => {
+      const result = await runAgentTurn({
+        messages: [{ role: "user", content: "what do I owe?" }],
+        principal: PRINCIPAL,
+        context: CONTEXT,
+        client: creator(toolReply("get_state"), textReply("You have 9 things open this week.")),
+        tools: [{ ...echoTool, aboutUser: true }],
+      });
+
+      expect(result.text).not.toContain("9");
+      expect(result.violations.map((v) => v.kind)).toEqual(["unsourced_number"]);
+    });
+
+    it("speaks a reply whose figures come from the tool result", async () => {
+      const result = await runAgentTurn({
+        messages: [{ role: "user", content: "what do I owe?" }],
+        principal: PRINCIPAL,
+        context: CONTEXT,
+        client: creator(toolReply("get_state"), textReply("Just the 1 — Maya's deck.")),
+        tools: [{ ...echoTool, aboutUser: true }],
+      });
+
+      expect(result.text).toBe("Just the 1 — Maya's deck.");
+      expect(result.violations).toEqual([]);
+    });
+
+    // The check is scoped to claims about the user's life, so ordinary
+    // conversation is untouched.
+    it("leaves an ordinary answer alone when no tool about the user ran", async () => {
+      const result = await runAgentTurn({
+        messages: [{ role: "user", content: "what's two plus two?" }],
+        principal: PRINCIPAL,
+        context: CONTEXT,
+        client: creator(textReply("That's 4.")),
+        tools: [echoTool],
+      });
+
+      expect(result.text).toBe("That's 4.");
+      expect(result.violations).toEqual([]);
+    });
+  });
+
+  it("gives every turn an id, so its evidence can be found again", async () => {
+    const result = await runAgentTurn({
+      messages: [{ role: "user", content: "hello" }],
+      principal: PRINCIPAL,
+      context: CONTEXT,
+      client: creator(textReply("Hi.")),
+      tools: [echoTool],
+    });
+
+    expect(result.turnId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
   it("records per-leg timings so the latency budget is measured, not guessed", async () => {
     const result = await runAgentTurn({
       messages: [{ role: "user", content: "what do I owe?" }],

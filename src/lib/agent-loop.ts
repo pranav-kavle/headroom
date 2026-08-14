@@ -6,8 +6,17 @@
 // tier-policy gate that §8 will need. The tool *definitions* stay plain JSON
 // Schema either way, so the Voice Agent portability argument is unaffected.
 
-import { engineTools, type EngineContext, type EngineTool } from "@headroom/engine-mcp";
+import { randomUUID } from "node:crypto";
+import {
+  engineTools,
+  getActionPolicy,
+  type ActionPolicy,
+  type ActionTier,
+  type EngineContext,
+  type EngineTool,
+} from "@headroom/engine-mcp";
 import { buildTurnParams } from "./agent";
+import { verifySpokenText, type Violation } from "./verify-output";
 import type { Principal } from "./principal";
 import type { TurnMessage } from "./openai-compat";
 
@@ -50,12 +59,32 @@ export interface TurnTiming {
   toolMs: number;
 }
 
+export interface BlockedCall {
+  tool: string;
+  tier: ActionTier;
+  policy: ActionPolicy;
+}
+
 export interface AgentTurnResult {
+  // 2026-08-13 spec §2. Everything below belongs to *this* turn and can be
+  // found again by this id — which is what citations, the policy record, and
+  // eventually an AgentRun row all need and none of them had.
+  turnId: string;
   text: string;
   citations: Citation[];
+  toolCalls: string[];
+  blocked: BlockedCall[];
+  violations: Violation[];
   refused: boolean;
   timings: { totalMs: number; turns: TurnTiming[] };
 }
+
+// §4. Spoken instead of a reply that failed verification. It says what
+// happened rather than inventing a smoother excuse, because the alternative —
+// quietly speaking an unsourced figure — is the exact failure the check exists
+// to catch.
+const UNVERIFIED_TEXT =
+  "Sorry — I don't want to give you a number I can't back up. Let me check that again.";
 
 // Structural, so tests don't have to construct real SDK responses and this file
 // doesn't hard-depend on SDK types that move between versions.
@@ -117,7 +146,37 @@ export async function runAgentTurn(input: {
   const messages: unknown[] = [...base.messages];
   const citations: Citation[] = [];
   const turns: TurnTiming[] = [];
+  const toolCalls: string[] = [];
+  const blocked: BlockedCall[] = [];
   const startedAt = Date.now();
+  const turnId = randomUUID();
+
+  // Everything this turn is entitled to have taken a figure from: the resolved
+  // dates it was handed, the user's own words, and — appended as they arrive —
+  // every tool result. The verifier checks the spoken reply against exactly
+  // this and nothing else.
+  const evidence: string[] = [
+    base.system[1]?.text ?? "",
+    ...input.messages.filter((m) => m.role === "user").map((m) => m.content),
+  ];
+  let aboutUser = false;
+
+  const finish = (text: string, options: { refused?: boolean } = {}): AgentTurnResult => {
+    const violations = verifySpokenText({ text, evidence, aboutUser });
+    return {
+      turnId,
+      // §4: an unverifiable statement about the user's life is not utterable.
+      // The reply is replaced rather than annotated — there is no version of
+      // "say it anyway, but flag it" that is compatible with core rule 1.
+      text: violations.length > 0 ? UNVERIFIED_TEXT : text,
+      citations,
+      toolCalls,
+      blocked,
+      violations,
+      refused: options.refused ?? false,
+      timings: { totalMs: Date.now() - startedAt, turns },
+    };
+  };
 
   for (let index = 0; index < MAX_TURNS; index++) {
     const modelStart = Date.now();
@@ -126,12 +185,7 @@ export async function runAgentTurn(input: {
       response = await withTimeout(input.client.create({ ...base, messages }), MODEL_CALL_TIMEOUT_MS);
     } catch {
       turns.push({ index, modelMs: Date.now() - modelStart, toolMs: 0 });
-      return {
-        text: MODEL_CALL_FAILURE_TEXT,
-        citations,
-        refused: false,
-        timings: { totalMs: Date.now() - startedAt, turns },
-      };
+      return finish(MODEL_CALL_FAILURE_TEXT);
     }
     const modelMs = Date.now() - modelStart;
 
@@ -139,23 +193,13 @@ export async function runAgentTurn(input: {
     // indexing into it would throw rather than surface the refusal.
     if (response.stop_reason === "refusal") {
       turns.push({ index, modelMs, toolMs: 0 });
-      return {
-        text: REFUSAL_TEXT,
-        citations,
-        refused: true,
-        timings: { totalMs: Date.now() - startedAt, turns },
-      };
+      return finish(REFUSAL_TEXT, { refused: true });
     }
 
     const toolUses = response.content.filter((b) => b.type === "tool_use");
     if (toolUses.length === 0) {
       turns.push({ index, modelMs, toolMs: 0 });
-      return {
-        text: textOf(response.content),
-        citations,
-        refused: false,
-        timings: { totalMs: Date.now() - startedAt, turns },
-      };
+      return finish(textOf(response.content));
     }
 
     messages.push({ role: "assistant", content: response.content });
@@ -166,12 +210,47 @@ export async function runAgentTurn(input: {
       const tool = tools.find((t) => t.name === call.name);
       try {
         if (!tool) throw new Error(`Unknown tool: ${call.name}`);
+        toolCalls.push(tool.name);
+
+        // 2026-08-13 spec §3 — the gate, and the only place autonomy is
+        // decided. The tier comes off the tool, never off the model, so this
+        // cannot be talked around; and it sits before `handler`, so a
+        // disallowed action does not run and then get apologised for.
+        if (tool.tier) {
+          const policy = getActionPolicy(tool.tier, {
+            tier1Unattended: input.context.tier1Unattended,
+          });
+          if (policy !== "allowed") {
+            blocked.push({ tool: tool.name, tier: tool.tier, policy });
+            results.push({
+              type: "tool_result",
+              tool_use_id: call.id,
+              // Handed back as data rather than an error: the model's job now
+              // is to offer, or to say it cannot — not to retry.
+              content: JSON.stringify({
+                executed: false,
+                policy,
+                tier: tool.tier,
+                explanation:
+                  policy === "needs_approval"
+                    ? "This action needs the user's approval before it can run. Offer it; do not claim it is done."
+                    : "This action cannot be run at all. Say so plainly; do not offer it.",
+              }),
+            });
+            continue;
+          }
+        }
+
+        if (tool.aboutUser) aboutUser = true;
+
         const output = await tool.handler(call.input ?? {}, input.context);
         collectCitations(output, citations);
+        const serialized = JSON.stringify(output);
+        evidence.push(serialized);
         results.push({
           type: "tool_result",
           tool_use_id: call.id,
-          content: JSON.stringify(output),
+          content: serialized,
         });
       } catch (error) {
         // Hand the failure back so the model can recover or say so, rather than
@@ -188,10 +267,5 @@ export async function runAgentTurn(input: {
     messages.push({ role: "user", content: results });
   }
 
-  return {
-    text: "I got stuck working that out.",
-    citations,
-    refused: false,
-    timings: { totalMs: Date.now() - startedAt, turns },
-  };
+  return finish("I got stuck working that out.");
 }

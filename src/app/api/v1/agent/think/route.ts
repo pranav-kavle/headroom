@@ -4,7 +4,7 @@ import { listCommitments } from "@headroom/graph";
 import { verifyThinkToken, type ThinkTokenClaims } from "@/lib/agent-think-auth";
 import { resolveAnthropicApiKey } from "@/lib/agent";
 import { runAgentTurn, type MessageCreator } from "@/lib/agent-loop";
-import { recordCitations } from "@/lib/agent-think-citations";
+import { recordTurn } from "@/lib/agent-turns";
 import { captureUtterance } from "@/lib/capture";
 import {
   isEchoOfPrecedingAgentTurn,
@@ -87,14 +87,43 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  recordCitations(userId, result.citations);
-
   const artifact = await captured;
 
+  // 2026-08-13 spec §2. One record per turn, carrying everything that turn did
+  // — what was spoken, what backs it, what ran, what the policy gate refused
+  // to run, and anything the verifier caught. The browser reads it back by
+  // matching on `text`.
+  recordTurn({
+    turnId: result.turnId,
+    userId,
+    text: result.text,
+    citations: result.citations,
+    toolCalls: result.toolCalls,
+    blocked: result.blocked,
+    violations: result.violations,
+    totalMs: result.timings.totalMs,
+    createdAt: now.toISOString(),
+  });
+
+  // A blocked action and a failed verification are the two things here worth
+  // waking up to, so they are named rather than folded into a count.
+  if (result.violations.length > 0) {
+    console.error(
+      `[think] turn=${result.turnId} spoken reply withheld — ${result.violations
+        .map((v) => `${v.kind}: ${v.detail}`)
+        .join("; ")}`,
+    );
+  }
+  for (const block of result.blocked) {
+    console.warn(`[think] turn=${result.turnId} blocked ${block.tool} (${block.tier}) — ${block.policy}`);
+  }
+
   console.info(
-    `[think] total=${result.timings.totalMs}ms turns=${result.timings.turns
+    `[think] turn=${result.turnId} total=${result.timings.totalMs}ms turns=${result.timings.turns
       .map((t) => `${t.modelMs}/${t.toolMs}`)
-      .join(" ")} citations=${result.citations.length} artifact=${artifact?.id ?? "none"}`,
+      .join(" ")} tools=${result.toolCalls.join(",") || "none"} citations=${
+      result.citations.length
+    } artifact=${artifact?.id ?? "none"}`,
   );
 
   return new Response(toChatCompletionStream(result.text, model), { headers: SSE_HEADERS });

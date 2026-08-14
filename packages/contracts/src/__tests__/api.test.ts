@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AgentTokenResponse,
-  AgentTurnCitationsResponse,
+  AgentTurnsResponse,
   ApiErrorResponse,
   CompleteOnboardingRequest,
   HealthResponse,
@@ -135,14 +135,29 @@ describe("AgentTokenResponse", () => {
   });
 });
 
-describe("AgentTurnCitationsResponse", () => {
-  it("accepts a list of citations", () => {
-    const body = { citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }] };
-    expect(AgentTurnCitationsResponse.parse(body)).toEqual(body);
+describe("AgentTurnsResponse", () => {
+  it("carries each turn's id, spoken text, and citations", () => {
+    const body = {
+      turns: [
+        {
+          turnId: "t1",
+          text: "You owe Maya the deck.",
+          citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
+        },
+      ],
+    };
+    expect(AgentTurnsResponse.parse(body)).toEqual(body);
   });
 
-  it("accepts an empty list when nothing was recorded", () => {
-    expect(AgentTurnCitationsResponse.parse({ citations: [] }).citations).toEqual([]);
+  // 2026-08-13 spec §2.1: `text` is the key the client matches on, so a turn
+  // without it cannot be correlated to the utterance it belongs to.
+  it("rejects a turn with no spoken text to match on", () => {
+    const body = { turns: [{ turnId: "t1", citations: [] }] };
+    expect(AgentTurnsResponse.safeParse(body).success).toBe(false);
+  });
+
+  it("accepts an empty list when the user has no turns yet", () => {
+    expect(AgentTurnsResponse.parse({ turns: [] }).turns).toEqual([]);
   });
 });
 

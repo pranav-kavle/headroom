@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentTokenResponse, AgentTurnCitationsResponse, HealthResponse, MeResponse, UsersResponse } from "@headroom/contracts";
-import { recordCitations } from "@/lib/agent-think-citations";
+import { AgentTokenResponse, AgentTurnsResponse, HealthResponse, MeResponse, UsersResponse } from "@headroom/contracts";
+import { recordTurn, resetTurns } from "@/lib/agent-turns";
 
 const getOrCreateUser = vi.fn();
 const completeOnboarding = vi.fn();
@@ -54,8 +54,25 @@ const CLAIMS = {
   timezone: "America/Chicago",
 };
 
+// runAgentTurn is mocked, so every reply it hands back needs the full turn
+// shape the route now records.
+function turnResult(over: Record<string, unknown> = {}) {
+  return {
+    turnId: "11111111-1111-4111-8111-111111111111",
+    text: "ok",
+    citations: [],
+    toolCalls: [],
+    blocked: [],
+    violations: [],
+    refused: false,
+    timings: { totalMs: 5, turns: [] },
+    ...over,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  resetTurns();
   createArtifact.mockResolvedValue({ id: "artifact-1" });
 });
 
@@ -304,12 +321,12 @@ describe("POST /api/v1/agent/think", () => {
 
   it("runs the agent turn on the latest user message and streams an OpenAI-shaped reply", async () => {
     verifyThinkToken.mockReturnValue(CLAIMS);
-    runAgentTurn.mockResolvedValue({
-      text: "You owe Maya the deck.",
-      citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
-      refused: false,
-      timings: { totalMs: 5, turns: [] },
-    });
+    runAgentTurn.mockResolvedValue(
+      turnResult({
+        text: "You owe Maya the deck.",
+        citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
+      }),
+    );
     const { POST } = await import("../agent/think/route");
 
     const response = await POST(
@@ -347,12 +364,7 @@ describe("POST /api/v1/agent/think", () => {
   // until now nothing stored them.
   it("stores the utterance as a voice_note artifact", async () => {
     verifyThinkToken.mockReturnValue(CLAIMS);
-    runAgentTurn.mockResolvedValue({
-      text: "Got it.",
-      citations: [],
-      refused: false,
-      timings: { totalMs: 5, turns: [] },
-    });
+    runAgentTurn.mockResolvedValue(turnResult({ text: "Got it." }));
     const { POST } = await import("../agent/think/route");
 
     await POST(makeThinkRequest([{ role: "user", content: "I owe Maya the deck" }], "valid"));
@@ -402,12 +414,7 @@ describe("POST /api/v1/agent/think", () => {
   // learns which zone that is.
   it("hands the user's timezone to the engine", async () => {
     verifyThinkToken.mockReturnValue(CLAIMS);
-    runAgentTurn.mockResolvedValue({
-      text: "ok",
-      citations: [],
-      refused: false,
-      timings: { totalMs: 5, turns: [] },
-    });
+    runAgentTurn.mockResolvedValue(turnResult());
     const { POST } = await import("../agent/think/route");
 
     await POST(makeThinkRequest([{ role: "user", content: "what day is it?" }], "valid"));
@@ -419,52 +426,85 @@ describe("POST /api/v1/agent/think", () => {
     );
   });
 
-  it("makes the turn's citations available for the client to poll", async () => {
+  // 2026-08-13 spec §2: the turn is recorded whole — what was spoken, what
+  // backs it, what ran, and what the gate refused to run.
+  it("records the turn, so its evidence can be found by the utterance it belongs to", async () => {
     verifyThinkToken.mockReturnValue(CLAIMS);
-    runAgentTurn.mockResolvedValue({
-      text: "You owe Maya the deck.",
-      citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
-      refused: false,
-      timings: { totalMs: 5, turns: [] },
-    });
+    runAgentTurn.mockResolvedValue(
+      turnResult({
+        text: "You owe Maya the deck.",
+        citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
+        toolCalls: ["get_state"],
+      }),
+    );
     const { POST } = await import("../agent/think/route");
 
     await POST(makeThinkRequest([{ role: "user", content: "what do I owe?" }], "valid"));
-    const { GET } = await import("../agent/think/citations/route");
+    const { GET } = await import("../agent/think/turns/route");
     getOrCreateUser.mockResolvedValue(USER_ROW);
-    const response = await GET();
 
-    expect(AgentTurnCitationsResponse.parse(await response.json())).toEqual({
-      citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
+    expect(AgentTurnsResponse.parse(await (await GET()).json())).toEqual({
+      turns: [
+        {
+          turnId: "11111111-1111-4111-8111-111111111111",
+          text: "You owe Maya the deck.",
+          citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
+        },
+      ],
     });
   });
 });
 
-describe("GET /api/v1/agent/think/citations", () => {
+describe("GET /api/v1/agent/think/turns", () => {
+  function recorded(over: Record<string, unknown> = {}) {
+    recordTurn({
+      turnId: "t1",
+      userId: USER_ROW.id,
+      text: "You owe Maya the deck.",
+      citations: [{ artifactId: "a1", quote: "I owe Maya the deck" }],
+      toolCalls: ["get_state"],
+      blocked: [],
+      violations: [],
+      totalMs: 800,
+      createdAt: "2026-08-13T14:00:00.000Z",
+      ...over,
+    });
+  }
+
   it("returns 401 when signed out", async () => {
     getOrCreateUser.mockResolvedValue(null);
-    const { GET } = await import("../agent/think/citations/route");
+    const { GET } = await import("../agent/think/turns/route");
 
     expect((await GET()).status).toBe(401);
   });
 
-  it("returns an empty list when nothing was recorded for that user", async () => {
+  it("returns an empty list when the user has no turns yet", async () => {
     getOrCreateUser.mockResolvedValue(USER_ROW);
-    const { GET } = await import("../agent/think/citations/route");
+    const { GET } = await import("../agent/think/turns/route");
 
-    const response = await GET();
-
-    expect(AgentTurnCitationsResponse.parse(await response.json())).toEqual({ citations: [] });
+    expect(AgentTurnsResponse.parse(await (await GET()).json())).toEqual({ turns: [] });
   });
 
-  it("clears citations once served, so a stale turn doesn't resurface", async () => {
+  // The endpoint this replaces drained what it served, so a re-render or a
+  // second tab could take the evidence belonging to an utterance that had not
+  // rendered yet.
+  it("does not consume what it serves", async () => {
     getOrCreateUser.mockResolvedValue(USER_ROW);
-    recordCitations(USER_ROW.id, [{ artifactId: "a1", quote: "I owe Maya the deck" }]);
-    const { GET } = await import("../agent/think/citations/route");
+    recorded();
+    const { GET } = await import("../agent/think/turns/route");
 
     await GET();
-    const second = await GET();
+    const second = AgentTurnsResponse.parse(await (await GET()).json());
 
-    expect(AgentTurnCitationsResponse.parse(await second.json())).toEqual({ citations: [] });
+    expect(second.turns).toHaveLength(1);
+    expect(second.turns[0].citations).toHaveLength(1);
+  });
+
+  it("never serves another user's turns", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    recorded({ turnId: "theirs", userId: "someone-else" });
+    const { GET } = await import("../agent/think/turns/route");
+
+    expect(AgentTurnsResponse.parse(await (await GET()).json())).toEqual({ turns: [] });
   });
 });

@@ -54,6 +54,17 @@ export interface EngineTool {
   // Set on tools that hit a live third-party API — the voice loop uses this
   // to know which calls are slow enough to warrant a filler message.
   external?: boolean;
+  // §8's tier, as a property of the tool rather than an argument the model
+  // supplies. Core rule 3 — "the model never chooses its own autonomy tier" —
+  // is only true if the tier is declared here, where the model cannot reach
+  // it. Undeclared means a read: nothing to gate. The loop refuses to run the
+  // handler of anything the policy table does not allow.
+  tier?: ActionTier;
+  // Set on tools whose results are claims about the user's own life. The
+  // output verifier arms its numeral check only when one of these ran, because
+  // core rule 2 scopes provenance to exactly that and the prompt permits
+  // ordinary conversation on everything else.
+  aboutUser?: boolean;
 }
 
 const KNOWN_TIERS: ActionTier[] = ["tier_1", "tier_2", "tier_3", "tier_4"];
@@ -69,6 +80,7 @@ export function engineTools(): EngineTool[] {
       description:
         "The user's current commitment state: today's date, their open commitments, and counts by direction. Call this before making any statement about what the user owes or is owed. Every date and count in the result is computed here — never calculate one yourself.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      aboutUser: true,
       // Note the ignored input: the user is taken from the request context, not
       // from anything the model says, so no prompt can widen the query.
       handler: async (_input, context): Promise<EngineState> =>
@@ -80,8 +92,12 @@ export function engineTools(): EngineTool[] {
     },
     {
       name: "get_action_policy",
+      // What this is, precisely: a way to find out what you may *offer*. It is
+      // not the gate, and never was one — a verdict returned to the model is a
+      // verdict the model can ignore. The gate is in the loop, keyed on the
+      // tool's own declared tier, and it runs whether this is called or not.
       description:
-        "Whether an action of a given tier may execute: 'allowed', 'needs_approval', or 'forbidden'. Call this before proposing any action. You do not decide your own autonomy — this does.",
+        "What the policy for a given tier of action is: 'allowed', 'needs_approval', or 'forbidden'. Call this before offering to do something, so that what you offer matches what is permitted. This tells you the rule; it does not grant permission, and whether any action actually runs is decided outside this conversation.",
       inputSchema: {
         type: "object",
         properties: {

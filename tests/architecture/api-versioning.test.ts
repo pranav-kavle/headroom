@@ -22,8 +22,8 @@ describe("port rule 1 — every route handler is versioned", () => {
 
   it("still has the six v1 routes", () => {
     expect(routeFiles().sort()).toEqual([
-      join(VERSIONED_PREFIX, "agent", "think", "citations", "route.ts"),
       join(VERSIONED_PREFIX, "agent", "think", "route.ts"),
+      join(VERSIONED_PREFIX, "agent", "think", "turns", "route.ts"),
       join(VERSIONED_PREFIX, "health", "route.ts"),
       join(VERSIONED_PREFIX, "me", "route.ts"),
       join(VERSIONED_PREFIX, "users", "route.ts"),
