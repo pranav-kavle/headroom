@@ -1,19 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AgentCitation, AgentTurnCitationsResponse } from "@headroom/contracts";
+import { AgentCitation, AgentTurnsResponse } from "@headroom/contracts";
 import { createVoiceSession, type VoiceSession } from "@/lib/voice-session";
 import { VoiceFab } from "./VoiceFab";
 import { VoiceSheet } from "./VoiceSheet";
 import { VoiceRecorder, type VoiceStatus, type VoiceTurn } from "./VoiceRecorder";
 
-async function fetchLatestCitations(): Promise<AgentCitation[]> {
-  // §6: citations for a turn are produced inside /api/v1/agent/think and
-  // never travel over Deepgram's socket, so they're fetched separately
-  // rather than read off the conversation-text event.
-  const response = await fetch("/api/v1/agent/think/citations");
+// Citations for a turn are produced inside /api/v1/agent/think and never
+// travel over Deepgram's socket, so they are fetched separately rather than
+// read off the conversation-text event.
+//
+// Matched by the spoken text, per 2026-08-13 spec §2.1: what Deepgram just
+// said back to us is byte-for-byte what the think endpoint returned, so it is
+// a key both ends already hold. The previous version drained a queue and
+// assumed the top of it belonged to this utterance — which is how evidence
+// ends up attached to the wrong claim. An exact match or nothing: under core
+// rule 2, no evidence beats the wrong evidence.
+async function fetchCitationsFor(spoken: string): Promise<AgentCitation[]> {
+  const response = await fetch("/api/v1/agent/think/turns");
   if (!response.ok) return [];
-  return AgentTurnCitationsResponse.parse(await response.json()).citations;
+  const { turns } = AgentTurnsResponse.parse(await response.json());
+  return turns.find((turn) => turn.text === spoken)?.citations ?? [];
 }
 
 export function VoiceOverlay() {
@@ -41,7 +49,7 @@ export function VoiceOverlay() {
     });
 
     if (role === "assistant") {
-      void fetchLatestCitations().then((citations) => {
+      void fetchCitationsFor(message.content).then((citations) => {
         if (citations.length === 0) return;
         setTurns((prev) => {
           if (insertedIndex < 0 || insertedIndex >= prev.length) return prev;

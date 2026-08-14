@@ -64,13 +64,25 @@ export const AgentTokenResponse = z.object({
 });
 export type AgentTokenResponse = z.infer<typeof AgentTokenResponse>;
 
-// Polled by the client after each agent utterance — §6 of the same doc. The
-// citations for a turn are produced inside /api/v1/agent/think and never
-// travel over Deepgram's socket, so they arrive on a side channel instead.
-export const AgentTurnCitationsResponse = z.object({
+// Fetched by the client after each agent utterance. The citations for a turn
+// are produced inside /api/v1/agent/think and never travel over Deepgram's
+// socket, so they come back on a side channel instead.
+//
+// 2026-08-13 spec §2.1: `text` is the correlation key. It is exactly what the
+// think endpoint returned and exactly what Deepgram speaks back to the browser,
+// so the client can match evidence to the utterance it just heard instead of
+// draining a queue and hoping the order held.
+export const AgentTurnSummary = z.object({
+  turnId: z.string(),
+  text: z.string(),
   citations: z.array(AgentCitation),
 });
-export type AgentTurnCitationsResponse = z.infer<typeof AgentTurnCitationsResponse>;
+export type AgentTurnSummary = z.infer<typeof AgentTurnSummary>;
+
+export const AgentTurnsResponse = z.object({
+  turns: z.array(AgentTurnSummary),
+});
+export type AgentTurnsResponse = z.infer<typeof AgentTurnsResponse>;
 
 export const HealthResponse = z.discriminatedUnion("status", [
   z.object({

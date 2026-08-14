@@ -67,6 +67,32 @@ describe("buildState", () => {
     expect(state.counts).toEqual({ owedByMe: 2, owedToMe: 1 });
   });
 
+  // 2026-08-13 spec §4.2. The principal block resolves "today" in the user's
+  // own zone; if `get_state` answered in UTC the two engine-authored dates
+  // would disagree for every user west of Greenwich after 18:00 local.
+  describe("timezone", () => {
+    it("resolves today in the user's zone, not UTC", () => {
+      const lateEvening = new Date("2026-08-14T02:00:00Z"); // 21:00 Aug 13 in Chicago
+
+      expect(buildState({ now: lateEvening, timezone: "America/Chicago" }).today).toBe("2026-08-13");
+      expect(buildState({ now: lateEvening }).today).toBe("2026-08-14");
+    });
+
+    it("formats due dates in the same zone", () => {
+      const state = buildState({
+        now: NOW,
+        timezone: "America/Chicago",
+        commitments: [commitment({ dueAt: new Date("2026-08-14T02:00:00Z") })],
+      });
+
+      expect(state.openCommitments[0].dueAt).toBe("2026-08-13");
+    });
+
+    it("falls back to UTC on an unusable zone rather than throwing mid-turn", () => {
+      expect(buildState({ now: NOW, timezone: "Mars/Olympus_Mons" }).today).toBe("2026-08-12");
+    });
+  });
+
   it("formats due dates as plain ISO days, and leaves undated commitments null", () => {
     const state = buildState({
       now: NOW,

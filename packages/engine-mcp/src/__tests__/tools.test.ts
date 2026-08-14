@@ -48,8 +48,31 @@ describe("engineTools", () => {
     ]);
   });
 
+  // Routing lives here, not in the system prompt — the prompt used to name
+  // these three and restate what each was for, which is a second source of
+  // truth that grows with the registry. A description now has to carry its own
+  // trigger and its own reason not to answer from memory.
+  it("makes every live lookup self-describing — what it covers, when to call it, why memory is not enough", () => {
+    for (const tool of engineTools().filter((t) => t.external)) {
+      expect(tool.description, tool.name).toMatch(/call this whenever/i);
+      expect(tool.description, tool.name).toMatch(/never answer this from memory/i);
+      expect(tool.description, tool.name).toMatch(/not trained on today/i);
+    }
+  });
+
+  // Core rule 1 reaches into the schema too: this is the one parameter the
+  // model cannot derive under a prompt that forbids date arithmetic, so the
+  // parameter itself says where to get it.
+  it("tells the caller where a flight date comes from, rather than assuming it can count", () => {
+    const date = (toolNamed("get_flight_status").inputSchema.properties as Record<string, { description: string }>)
+      .date;
+
+    expect(date.description).toMatch(/YYYY-MM-DD/);
+    expect(date.description).toMatch(/resolved dates|do not work it out/i);
+  });
+
   // The portability contract: plain JSON Schema, no SDK coupling, so the same
-  // definitions feed the Anthropic Tool Runner today and Deepgram's Voice Agent
+  // definitions feed the Anthropic turn loop today and Deepgram's Voice Agent
   // function calling later.
   it("describes every tool with a plain JSON Schema object", () => {
     for (const tool of engineTools()) {

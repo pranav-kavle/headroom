@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 // endpoint — design doc 2026-08-12-deepgram-voice-agent-design.md §2/§5.
 // Deepgram only accepts a custom think provider that speaks the OpenAI
 // chat-completions wire format; everything on our side of this file is our
-// own Tool Runner, untouched.
+// own turn loop, untouched.
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -21,6 +21,53 @@ export function latestUserTranscript(request: ChatCompletionRequest): string {
     if (message.role === "user") return message.content;
   }
   return "";
+}
+
+export interface TurnMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+// Long enough that nothing inside one voice session is forgotten in practice,
+// short enough that an hour-long session cannot grow the turn without bound.
+export const MAX_HISTORY_MESSAGES = 20;
+
+// 2026-08-13 spec §5. Deepgram carries the whole conversation on every `think`
+// call; this turns it into the `messages` array Anthropic wants. Three of the
+// four rules below exist because Deepgram's history does not satisfy the
+// Messages API's shape on its own:
+//
+//   - the session opens with a spoken greeting, so the first call of every
+//     conversation arrives assistant-first, and the first message must be
+//     `user`;
+//   - roles must alternate, and a paused sentence can arrive as two
+//     consecutive user turns;
+//   - the system message is ours to build, not Deepgram's to supply.
+//
+// This is history, not storage: nothing here is persisted, and the policy
+// prompt still forbids treating any of it as a source of fact about a
+// commitment.
+export function toTurnMessages(request: ChatCompletionRequest): TurnMessage[] {
+  const usable = request.messages.filter(
+    (m): m is ChatMessage & { role: "user" | "assistant" } =>
+      (m.role === "user" || m.role === "assistant") && Boolean(m.content?.trim()),
+  );
+
+  const recent = usable.slice(-MAX_HISTORY_MESSAGES);
+
+  const coalesced: TurnMessage[] = [];
+  for (const message of recent) {
+    const previous = coalesced[coalesced.length - 1];
+    if (previous?.role === message.role) {
+      previous.content = `${previous.content}\n${message.content}`;
+      continue;
+    }
+    coalesced.push({ role: message.role, content: message.content });
+  }
+
+  // Anything before the first user turn is the agent talking to itself.
+  const firstUser = coalesced.findIndex((m) => m.role === "user");
+  return firstUser < 0 ? [] : coalesced.slice(firstUser);
 }
 
 // Below this, an utterance is left alone: "yes", "the deck", "go ahead" are
@@ -85,8 +132,8 @@ export function isEchoOfPrecedingAgentTurn(request: ChatCompletionRequest): bool
 // Deepgram's custom `think` endpoint requires this exact SSE shape — a plain
 // JSON chat-completion body runs fine but is never spoken, confirmed live via
 // the container logs (real text returned every time, nothing ever reached
-// speech). Not real token streaming: our own Tool Runner only has the full
-// reply once its two-turn loop finishes, so this sends it as a single delta
+// speech). Not real token streaming: `runAgentTurn` only has the full reply
+// once its two-turn loop finishes, so this sends it as a single delta
 // chunk followed by the closing chunk and `[DONE]`, matching the framing
 // Deepgram's parser expects without pretending to stream token-by-token.
 export function toChatCompletionStream(text: string, model: string): ReadableStream<Uint8Array> {

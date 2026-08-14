@@ -7,7 +7,49 @@ describe("signThinkToken / verifyThinkToken", () => {
   it("round-trips the user id through a signed token", () => {
     const token = signThinkToken("user-1", { env: ENV });
 
-    expect(verifyThinkToken(token, { env: ENV })).toBe("user-1");
+    expect(verifyThinkToken(token, { env: ENV }).userId).toBe("user-1");
+  });
+
+  // 2026-08-13 spec §3. The principal travels in the token so the think
+  // endpoint never has to read the database on the voice hot path.
+  it("carries the principal — name, role, and timezone — through the signature", () => {
+    const token = signThinkToken("user-1", {
+      env: ENV,
+      principal: { displayName: "Priya Raman", role: "product counsel", timezone: "America/Chicago" },
+    });
+
+    expect(verifyThinkToken(token, { env: ENV })).toEqual({
+      userId: "user-1",
+      displayName: "Priya Raman",
+      role: "product counsel",
+      timezone: "America/Chicago",
+    });
+  });
+
+  // A token minted before this shipped must keep working — an open session
+  // should not be forced to re-auth to gain a field it can live without.
+  it("verifies a token minted without a principal, yielding nulls", () => {
+    const legacy = signThinkToken("user-1", { env: ENV });
+
+    expect(verifyThinkToken(legacy, { env: ENV })).toEqual({
+      userId: "user-1",
+      displayName: null,
+      role: null,
+      timezone: null,
+    });
+  });
+
+  it("rejects a token whose principal was edited after signing", () => {
+    const token = signThinkToken("user-1", {
+      env: ENV,
+      principal: { displayName: "Priya", role: null, timezone: null },
+    });
+    const [, signature] = token.split(".");
+    const forged = Buffer.from(
+      JSON.stringify({ userId: "user-2", expiresAt: Date.now() + 60_000, displayName: "Someone Else" }),
+    ).toString("base64url");
+
+    expect(() => verifyThinkToken(`${forged}.${signature}`, { env: ENV })).toThrow();
   });
 
   it("rejects a token signed with a different secret", () => {

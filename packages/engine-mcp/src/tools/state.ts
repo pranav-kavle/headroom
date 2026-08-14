@@ -42,15 +42,32 @@ export interface EngineState {
 
 const OPEN_STATUSES = new Set(["open", "at_risk", "overdue"]);
 
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
+// 2026-08-13 spec §4.2. A calendar day only exists relative to a zone, and the
+// user's zone is the only one that matters here — `toISOString()` would answer
+// in UTC, disagreeing with the principal block's "today" for anyone west of
+// Greenwich after 18:00 local. `en-CA` is the shortest route to YYYY-MM-DD.
+function dayFormatter(timezone?: string): Intl.DateTimeFormat {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone || "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  } catch {
+    // An unusable zone is bad stored data, not a reason to fail a voice turn.
+    return dayFormatter();
+  }
 }
 
 export function buildState(input: {
   now: Date;
-  commitments: StateCommitmentInput[];
+  commitments?: StateCommitmentInput[];
+  timezone?: string;
 }): EngineState {
-  const open = input.commitments.filter((c) => OPEN_STATUSES.has(c.status));
+  const open = (input.commitments ?? []).filter((c) => OPEN_STATUSES.has(c.status));
+  const formatter = dayFormatter(input.timezone);
+  const isoDay = (date: Date) => formatter.format(date);
 
   return {
     today: isoDay(input.now),

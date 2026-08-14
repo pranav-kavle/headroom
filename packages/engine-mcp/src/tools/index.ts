@@ -2,7 +2,7 @@
 // Schema with no LLM-SDK coupling.
 //
 // That's deliberate and load-bearing: the same definitions feed the Anthropic
-// Tool Runner today and could feed Deepgram Voice Agent's function calling at
+// turn loop today and could feed Deepgram Voice Agent's function calling at
 // v1.5 through a small adapter, rather than needing a rewrite per tool. Port
 // rule 5 applied to the model layer.
 
@@ -33,6 +33,10 @@ export interface EngineContext {
   userId: string;
   now: Date;
   listCommitments: (userId: string) => Promise<StateCommitmentInput[]>;
+  // The user's IANA zone (2026-08-13 spec §4.2). A calendar day is meaningless
+  // without one, and the engine owns every date the model is allowed to say —
+  // so it has to own the zone they are resolved in too. Absent means UTC.
+  timezone?: string;
   tier1Unattended?: boolean;
   // Live third-party lookups (§16) — injected so tests never hit the network,
   // and so the app layer (not the engine) owns key resolution, same as every
@@ -50,6 +54,17 @@ export interface EngineTool {
   // Set on tools that hit a live third-party API — the voice loop uses this
   // to know which calls are slow enough to warrant a filler message.
   external?: boolean;
+  // §8's tier, as a property of the tool rather than an argument the model
+  // supplies. Core rule 3 — "the model never chooses its own autonomy tier" —
+  // is only true if the tier is declared here, where the model cannot reach
+  // it. Undeclared means a read: nothing to gate. The loop refuses to run the
+  // handler of anything the policy table does not allow.
+  tier?: ActionTier;
+  // Set on tools whose results are claims about the user's own life. The
+  // output verifier arms its numeral check only when one of these ran, because
+  // core rule 2 scopes provenance to exactly that and the prompt permits
+  // ordinary conversation on everything else.
+  aboutUser?: boolean;
 }
 
 const KNOWN_TIERS: ActionTier[] = ["tier_1", "tier_2", "tier_3", "tier_4"];
@@ -65,18 +80,24 @@ export function engineTools(): EngineTool[] {
       description:
         "The user's current commitment state: today's date, their open commitments, and counts by direction. Call this before making any statement about what the user owes or is owed. Every date and count in the result is computed here — never calculate one yourself.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      aboutUser: true,
       // Note the ignored input: the user is taken from the request context, not
       // from anything the model says, so no prompt can widen the query.
       handler: async (_input, context): Promise<EngineState> =>
         buildState({
           now: context.now,
+          timezone: context.timezone,
           commitments: await context.listCommitments(context.userId),
         }),
     },
     {
       name: "get_action_policy",
+      // What this is, precisely: a way to find out what you may *offer*. It is
+      // not the gate, and never was one — a verdict returned to the model is a
+      // verdict the model can ignore. The gate is in the loop, keyed on the
+      // tool's own declared tier, and it runs whether this is called or not.
       description:
-        "Whether an action of a given tier may execute: 'allowed', 'needs_approval', or 'forbidden'. Call this before proposing any action. You do not decide your own autonomy — this does.",
+        "What the policy for a given tier of action is: 'allowed', 'needs_approval', or 'forbidden'. Call this before offering to do something, so that what you offer matches what is permitted. This tells you the rule; it does not grant permission, and whether any action actually runs is decided outside this conversation.",
       inputSchema: {
         type: "object",
         properties: {
@@ -96,8 +117,11 @@ export function engineTools(): EngineTool[] {
     },
     {
       name: "get_weather",
+      // A description carries three things, because the prompt no longer does:
+      // what the tool returns, when to reach for it, and why answering from
+      // memory is wrong. Same for the two below.
       description:
-        "Live current weather conditions for a place — temperature, wind, and sky. A plan-quality signal only, never a diagnosis of anything about the user.",
+        "Current weather conditions for a named place — temperature, wind, and sky. Call this whenever the user asks what it is like somewhere, or wants to plan around the weather. Conditions change hour to hour and you were not trained on today's, so never answer this from memory. A plan-quality signal only, never a diagnosis of anything about the user.",
       inputSchema: {
         type: "object",
         properties: { location: { type: "string", description: "A place name, e.g. 'Chicago'." } },
@@ -115,7 +139,7 @@ export function engineTools(): EngineTool[] {
     {
       name: "get_events",
       description:
-        "Live event listings (concerts, shows, games) near a place, from Ticketmaster. Useful for planning conflicts or suggestions — not a claim about anything the user has committed to.",
+        "Event listings near a place — concerts, shows, and games, from Ticketmaster — optionally narrowed by a keyword. Call this whenever the user asks what is on somewhere, or is looking for something to go to. Listings change daily and you were not trained on today's, so never answer this from memory. Useful for planning around, but not a claim about anything the user has committed to.",
       inputSchema: {
         type: "object",
         properties: {
@@ -142,12 +166,18 @@ export function engineTools(): EngineTool[] {
     {
       name: "get_flight_status",
       description:
-        "Live status of a specific flight — scheduled/revised times, airports, and current status — by flight number and date.",
+        "Status of one specific flight — scheduled and revised times, airports, and whether it is running to time — by flight number and departure date. Call this whenever a specific flight comes up. Status changes hour to hour and you were not trained on today's, so never answer this from memory.",
       inputSchema: {
         type: "object",
         properties: {
           flightNumber: { type: "string", description: "e.g. 'UA1' or 'BA249'." },
-          date: { type: "string", description: "The flight's departure date, as YYYY-MM-DD." },
+          // The one parameter a caller under core rule 1 cannot derive: read it
+          // off the resolved dates rather than counting days out.
+          date: {
+            type: "string",
+            description:
+              "The flight's departure date, as YYYY-MM-DD. Take it from the resolved dates you were given — do not work it out yourself.",
+          },
         },
         required: ["flightNumber", "date"],
         additionalProperties: false,

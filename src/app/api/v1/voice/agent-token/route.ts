@@ -16,7 +16,16 @@ export async function POST() {
 
   try {
     const deepgram = await mintDeepgramAgentToken();
-    const thinkAuthToken = signThinkToken(user.id);
+    // 2026-08-13 spec §3. The principal is embedded here, where the User row is
+    // already in hand, so /api/v1/agent/think never has to read the database on
+    // the voice hot path. Bounded staleness: a rename applies at the next mint.
+    const thinkAuthToken = signThinkToken(user.id, {
+      principal: {
+        displayName: user.displayName,
+        role: user.role,
+        timezone: user.timezone,
+      },
+    });
 
     return NextResponse.json(
       AgentTokenResponse.parse({
