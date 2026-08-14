@@ -144,14 +144,14 @@ export function ControlsView({
                 githubConnected ? (
                   <button
                     type="button"
-                    className={styles.lockpill}
+                    className={styles.actionpill}
                     onClick={syncGithubNow}
                     disabled={githubSyncing}
                   >
                     {githubSyncing ? "Syncing…" : "Sync now"}
                   </button>
                 ) : (
-                  <button type="button" className={styles.lockpill} onClick={connectGithub}>
+                  <button type="button" className={styles.actionpill} onClick={connectGithub}>
                     Connect
                   </button>
                 )
