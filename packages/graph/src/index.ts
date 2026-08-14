@@ -8,7 +8,13 @@ export { ensureSelfPerson, resolvePerson } from "./people";
 export type { PersonRow } from "./people";
 export { listConnectorCursors } from "./connectors";
 export type { ConnectorCursorRow } from "./connectors";
-export { getCommitmentById, listCommitments } from "./commitments";
+export {
+  closeCommitment,
+  createCommitment,
+  findCommitmentBySourceArtifact,
+  getCommitmentById,
+  listCommitments,
+} from "./commitments";
 export type { CommitmentRow } from "./commitments";
 export { listActions } from "./actions";
 export type { ActionRow } from "./actions";

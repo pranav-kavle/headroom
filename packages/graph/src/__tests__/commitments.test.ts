@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createArtifact, createUser, getCommitmentById, listCommitments, prisma } from "../index";
+import {
+  closeCommitment,
+  createArtifact,
+  createCommitment,
+  createUser,
+  findCommitmentBySourceArtifact,
+  getCommitmentById,
+  listCommitments,
+  prisma,
+} from "../index";
 
 const clerkIds: string[] = [];
 
@@ -40,6 +49,7 @@ async function makeCommitment(input: {
 
 afterEach(async () => {
   if (clerkIds.length > 0) {
+    await prisma.commitmentEvent.deleteMany({ where: { user: { clerkUserId: { in: clerkIds } } } });
     await prisma.commitment.deleteMany({ where: { user: { clerkUserId: { in: clerkIds } } } });
     await prisma.artifact.deleteMany({ where: { user: { clerkUserId: { in: clerkIds } } } });
     await prisma.person.deleteMany({ where: { user: { clerkUserId: { in: clerkIds } } } });
@@ -192,5 +202,95 @@ describe("getCommitmentById", () => {
     const user = await makeUser("detail-missing");
 
     expect(await getCommitmentById("00000000-0000-0000-0000-000000000000", user.id)).toBeNull();
+  });
+});
+
+describe("createCommitment / findCommitmentBySourceArtifact", () => {
+  it("round-trips a commitment", async () => {
+    const user = await makeUser("create_commitment");
+    const person = await makePerson(user.id, "mrodriguez");
+    const artifact = await createArtifact({
+      userId: user.id,
+      source: "github",
+      externalId: "ext_1",
+      occurredAt: new Date("2026-08-14T00:00:00.000Z"),
+      excerpt: "Review this",
+      url: "https://github.com/acme/repo/pull/1",
+    });
+
+    const commitment = await createCommitment({
+      userId: user.id,
+      direction: "owed_by_me",
+      summary: "Review this",
+      counterpartyPersonId: person.id,
+      dueAt: null,
+      duePrecision: "vague",
+      confidence: 1,
+      sourceArtifactId: artifact.id,
+      quote: "Review this",
+    });
+
+    expect(commitment.status).toBe("open");
+    expect(commitment.direction).toBe("owed_by_me");
+
+    const found = await findCommitmentBySourceArtifact(user.id, artifact.id);
+    expect(found?.id).toBe(commitment.id);
+  });
+
+  it("returns null when no commitment references that artifact", async () => {
+    const user = await makeUser("create_commitment_miss");
+    const artifact = await createArtifact({
+      userId: user.id,
+      source: "github",
+      externalId: "ext_2",
+      occurredAt: new Date("2026-08-14T00:00:00.000Z"),
+      excerpt: "Review this",
+      url: "https://github.com/acme/repo/pull/2",
+    });
+
+    expect(await findCommitmentBySourceArtifact(user.id, artifact.id)).toBeNull();
+  });
+});
+
+describe("closeCommitment", () => {
+  it("marks a commitment fulfilled and records a CommitmentEvent", async () => {
+    const user = await makeUser("close_commitment");
+    const person = await makePerson(user.id, "mrodriguez");
+    const artifact = await createArtifact({
+      userId: user.id,
+      source: "github",
+      externalId: "ext_3",
+      occurredAt: new Date("2026-08-14T00:00:00.000Z"),
+      excerpt: "Review this",
+      url: "https://github.com/acme/repo/pull/3",
+    });
+    const commitment = await createCommitment({
+      userId: user.id,
+      direction: "owed_by_me",
+      summary: "Review this",
+      counterpartyPersonId: person.id,
+      dueAt: null,
+      duePrecision: "vague",
+      confidence: 1,
+      sourceArtifactId: artifact.id,
+      quote: "Review this",
+    });
+    const at = new Date("2026-08-15T00:00:00.000Z");
+
+    const closed = await closeCommitment({
+      id: commitment.id,
+      userId: user.id,
+      status: "fulfilled",
+      reason: "Closed on GitHub.",
+      artifactId: artifact.id,
+      at,
+    });
+
+    expect(closed.status).toBe("fulfilled");
+    expect(closed.closedReason).toBe("Closed on GitHub.");
+    expect(closed.closedAt).toEqual(at);
+
+    const events = await prisma.commitmentEvent.findMany({ where: { commitmentId: commitment.id } });
+    expect(events.map((e) => e.kind).sort()).toEqual(["created", "fulfilled"]);
   });
 });
