@@ -1,6 +1,13 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentTokenResponse, AgentTurnsResponse, HealthResponse, MeResponse, UsersResponse } from "@headroom/contracts";
+import {
+  AgentTokenResponse,
+  AgentTurnsResponse,
+  GithubSyncResponse,
+  HealthResponse,
+  MeResponse,
+  UsersResponse,
+} from "@headroom/contracts";
 import { recordTurn, resetTurns } from "@/lib/agent-turns";
 
 const getOrCreateUser = vi.fn();
@@ -13,6 +20,8 @@ const mintDeepgramAgentToken = vi.fn();
 const signThinkToken = vi.fn();
 const verifyThinkToken = vi.fn();
 const runAgentTurn = vi.fn();
+const getGithubAccessToken = vi.fn();
+const syncGithub = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getOrCreateUser: () => getOrCreateUser() }));
 vi.mock("@headroom/graph", () => ({
@@ -33,6 +42,8 @@ vi.mock("@/lib/agent", () => ({ resolveAnthropicApiKey: () => "sk-ant-test" }));
 vi.mock("@/lib/agent-loop", () => ({
   runAgentTurn: (input: unknown) => runAgentTurn(input),
 }));
+vi.mock("@/lib/github-token", () => ({ getGithubAccessToken: (id: string) => getGithubAccessToken(id) }));
+vi.mock("@headroom/integrations", () => ({ syncGithub: (input: unknown) => syncGithub(input) }));
 
 const USER_ROW = {
   id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
@@ -506,5 +517,50 @@ describe("GET /api/v1/agent/think/turns", () => {
     const { GET } = await import("../agent/think/turns/route");
 
     expect(AgentTurnsResponse.parse(await (await GET()).json())).toEqual({ turns: [] });
+  });
+});
+
+describe("POST /api/v1/integrations/github/sync", () => {
+  it("returns 401 when signed out", async () => {
+    getOrCreateUser.mockResolvedValue(null);
+    const { POST } = await import("../integrations/github/sync/route");
+
+    expect((await POST()).status).toBe(401);
+  });
+
+  it("returns 400 when GitHub is not connected yet", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    getGithubAccessToken.mockResolvedValue(null);
+    const { POST } = await import("../integrations/github/sync/route");
+
+    const response = await POST();
+
+    expect(response.status).toBe(400);
+    expect(syncGithub).not.toHaveBeenCalled();
+  });
+
+  it("syncs and returns the summary when connected", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    getGithubAccessToken.mockResolvedValue("gho_live");
+    syncGithub.mockResolvedValue({ created: 2, closed: 1 });
+    const { POST } = await import("../integrations/github/sync/route");
+
+    const response = await POST();
+    const body = GithubSyncResponse.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ created: 2, closed: 1 });
+    expect(syncGithub).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: USER_ROW.id, token: "gho_live" }),
+    );
+  });
+
+  it("returns 502 when the sync itself fails", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    getGithubAccessToken.mockResolvedValue("gho_live");
+    syncGithub.mockRejectedValue(new Error("GitHub GraphQL error: rate limited"));
+    const { POST } = await import("../integrations/github/sync/route");
+
+    expect((await POST()).status).toBe(502);
   });
 });

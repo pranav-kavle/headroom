@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     "@headroom/contracts",
     "@headroom/engine-mcp",
     "@headroom/graph",
+    "@headroom/integrations",
     "@headroom/tokens",
   ],
   turbopack: {
