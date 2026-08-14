@@ -5,7 +5,12 @@ import { verifyThinkToken } from "@/lib/agent-think-auth";
 import { resolveAnthropicApiKey } from "@/lib/agent";
 import { runAgentTurn, type MessageCreator } from "@/lib/agent-loop";
 import { recordCitations } from "@/lib/agent-think-citations";
-import { latestUserTranscript, toChatCompletionStream, type ChatCompletionRequest } from "@/lib/openai-compat";
+import {
+  isEchoOfPrecedingAgentTurn,
+  latestUserTranscript,
+  toChatCompletionStream,
+  type ChatCompletionRequest,
+} from "@/lib/openai-compat";
 
 const SSE_HEADERS = { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" };
 
@@ -32,6 +37,16 @@ export async function POST(request: NextRequest) {
   const model = body.model ?? "headroom-agent";
   const transcript = latestUserTranscript(body);
   if (!transcript.trim()) {
+    return new Response(toChatCompletionStream("", model), { headers: SSE_HEADERS });
+  }
+
+  // The agent's own voice bleeding back through the mic, transcribed as a real
+  // turn. `voice-session.ts`'s mic gate is the primary defence; this is the
+  // backstop Deepgram recommends for whatever still gets through. An empty
+  // reply is the same "say nothing" path the blank-transcript case above takes,
+  // so the agent stays silent instead of answering itself.
+  if (isEchoOfPrecedingAgentTurn(body)) {
+    console.info("[think] dropped a turn that echoed the agent's own previous reply");
     return new Response(toChatCompletionStream("", model), { headers: SSE_HEADERS });
   }
 

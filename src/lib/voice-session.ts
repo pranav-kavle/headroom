@@ -14,6 +14,10 @@ import { AgentTokenResponse } from "@headroom/contracts";
 interface HeadroomAgentSettings extends Omit<AgentSettingsObject, "think" | "speak"> {
   think: ThinkSettings;
   speak: SpeakSettings;
+  // A documented Settings field (AgentSession's own reconnect path clears
+  // `agent.greeting`), but absent from @deepgram/agents 0.1.1's published
+  // types — declared here so it survives the wire without a cast.
+  greeting?: string;
 }
 
 // Design doc 2026-08-12-deepgram-voice-agent-design.md §5/§6. Port rule 5 —
@@ -64,11 +68,21 @@ const LISTEN_PROVIDER = {
   eot_timeout_ms: 5800,
 };
 
+// Spoken the moment the session opens, before the user says anything. The
+// point is acoustic, not conversational: browser AEC is an adaptive filter that
+// only learns the speaker-to-mic path once audio is actually flowing, and leaks
+// badly until it converges. That convergence window is exactly the first few
+// turns the self-echo loop used to be seeded in, so giving the AEC a known
+// signal to calibrate against up front closes it — Deepgram's audio
+// preprocessing guide recommends precisely this.
+const GREETING = "Hey — I'm here. What's on your mind?";
+
 export function buildAgentSettings(options: {
   thinkEndpointUrl: string;
   thinkAuthToken: string;
 }): HeadroomAgentSettings {
   return {
+    greeting: GREETING,
     listen: {
       provider: LISTEN_PROVIDER,
     },
@@ -129,18 +143,6 @@ export async function createVoiceSession(
 ): Promise<VoiceSession> {
   const fetchImpl = options.fetchImpl ?? fetch;
 
-  // Temporary tracing for bugs 1/2: self-echo was reported as still live in
-  // roughly the first 10s of a session despite the mic-gating fix below
-  // looking correct on review. Rather than guess a second time, this traces
-  // the actual event/timing sequence — in particular, whether
-  // user-started-speaking ever fires while micGated is already true, which
-  // should be impossible if gating is doing its job and would point at
-  // something bypassing it entirely. Remove once the root cause is found.
-  const sessionStartedAt = Date.now();
-  const trace = (event: string, extra?: Record<string, unknown>) => {
-    console.debug(`[voice +${Date.now() - sessionStartedAt}ms] ${event}`, extra ?? "");
-  };
-
   const player = new AgentPlayer({ sampleRate: SPEAK_SAMPLE_RATE });
   player.queue(SILENT_FRAME);
 
@@ -158,21 +160,30 @@ export async function createVoiceSession(
     },
   });
 
-  // Bugs 1/2: the mic stays open for the whole session (barge-in, above), but
+  // Half-duplex: no mic audio leaves this client while the agent is audible.
   // AgentPlayer plays TTS through a raw Web Audio destination rather than an
-  // <audio> element, and browser echo-cancellation isn't reliable for that —
-  // the agent's own voice can get picked back up as if the user were
-  // talking, both cutting its own reply off early (via the barge-in
-  // interrupt below) and getting transcribed as a real turn. Dropping
-  // outgoing frames while the agent's audio is actually playing removes the
-  // self-echo source; the trade-off is that true voice barge-in no longer
-  // works — tap-to-end is still available while the agent is speaking.
+  // <audio> element, so the agent's own voice can be picked back up, misread as
+  // the user talking, and transcribed as a real turn — the agent then answers
+  // itself, and the reply seeds the next round. Barge-in is the price; tap-to-
+  // end still works while the agent is speaking.
   let micGated = false;
   const microphone = new AgentMicrophone(
     (frame) => {
       if (!micGated) session.sendAudio(frame);
     },
-    { sampleRate: MIC_SAMPLE_RATE },
+    {
+      sampleRate: MIC_SAMPLE_RATE,
+      // Platform AEC has direct access to both the mic and the speaker, so it
+      // handles time alignment for free — the first and most effective layer.
+      echoCancellation: true,
+      // Both default to true in the SDK, and both work against us. Aggressive
+      // noise suppression degrades transcription accuracy (Deepgram's own
+      // guidance is to leave it off), and automatic gain ramps input gain up in
+      // a quiet room at session start — amplifying exactly the residual echo
+      // the AEC hasn't converged on yet.
+      noiseSuppression: false,
+      autoGainControl: false,
+    },
   );
 
   let fillerTimer: ReturnType<typeof setTimeout> | undefined;
@@ -181,31 +192,72 @@ export async function createVoiceSession(
     fillerTimer = undefined;
   };
 
-  // agent-audio-done fires once the *server* has finished sending audio
-  // bytes for the reply — AgentPlayer schedules those bytes for real-time
-  // playback separately, so for anything longer than a short reply there's a
-  // real window where the transport signal has already fired but the reply
-  // is still audibly playing. Poll actual remaining playback time rather
-  // than trusting the transport-level event alone.
+  // agent-audio-done fires once the *server* has finished sending audio bytes,
+  // but AgentPlayer schedules those bytes for real-time playback separately —
+  // so the transport signal leads the actual sound by the whole length of the
+  // reply. Poll what's really left to play instead of trusting the event.
+  //
+  // The hangover sits on top of that, covering two things the playback clock
+  // can't see: AudioContext.currentTime excludes the OS/hardware output buffer
+  // (tens of ms wired, ~300ms over Bluetooth), and the room's acoustic tail
+  // outlives the last sample either way. Reopening the mic the instant
+  // getRemainingPlaybackTime() hits zero lets the end of the agent's own last
+  // word straight back in.
   const PLAYBACK_POLL_INTERVAL_MS = 100;
+  const MIC_UNGATE_HANGOVER_MS = 300;
+
   let playbackPollTimer: ReturnType<typeof setInterval> | undefined;
-  const stopPlaybackPoll = () => {
+  let ungateTimer: ReturnType<typeof setTimeout> | undefined;
+  const cancelUngate = () => {
     clearInterval(playbackPollTimer);
     playbackPollTimer = undefined;
+    clearTimeout(ungateTimer);
+    ungateTimer = undefined;
   };
 
-  session.on("welcome", () => trace("welcome"));
-  session.on("settings-applied", () => trace("settings-applied"));
-  session.on("audio", (chunk) => player.queue(chunk));
+  // Any agent audio at all closes the gate and restarts the countdown to
+  // reopening it. Bracketing on agent-started-speaking/agent-audio-done alone
+  // was the hole the self-echo loop came through: Deepgram does not truncate
+  // in-flight TTS server-side (§8), and AgentPlayer.queue() silently rebuilds a
+  // closed AudioContext, so audio for a turn can arrive — and play out loud —
+  // with no further event left to re-arm the gate. Driving the gate off the
+  // audio itself means it cannot be left open while something is playing.
+  const gateMicWhileAgentSpeaks = () => {
+    micGated = true;
+
+    // More audio has arrived, so any reopen already counting down is stale.
+    clearTimeout(ungateTimer);
+    ungateTimer = undefined;
+
+    // Called once per audio chunk, so don't churn the interval — if the drain
+    // watch is already running it stays valid.
+    if (playbackPollTimer) return;
+
+    const reopenWhenDrained = () => {
+      if (player.getRemainingPlaybackTime() > 0) return;
+      clearInterval(playbackPollTimer);
+      playbackPollTimer = undefined;
+      ungateTimer = setTimeout(() => {
+        micGated = false;
+        ungateTimer = undefined;
+      }, MIC_UNGATE_HANGOVER_MS);
+    };
+
+    playbackPollTimer = setInterval(reopenWhenDrained, PLAYBACK_POLL_INTERVAL_MS);
+    reopenWhenDrained();
+  };
+
+  session.on("audio", (chunk) => {
+    gateMicWhileAgentSpeaks();
+    player.queue(chunk);
+  });
   session.on("user-started-speaking", () => {
-    // The money line for the bugs 1/2 investigation: this should be
-    // impossible to see with micGated: true. If it shows up anyway,
-    // something is sending Deepgram audio outside our own gated frame
-    // callback below.
-    trace("user-started-speaking", { micGated });
-    // AgentPlayer.interrupt() is the documented barge-in mechanism — Deepgram
-    // does not truncate in-flight TTS server-side, per §8.
-    player.interrupt();
+    // Deliberately no player.interrupt() here. It closes and nulls
+    // AgentPlayer's AudioContext, which makes getRemainingPlaybackTime() report
+    // 0 no matter what is actually playing — the gate would then reopen against
+    // a clock that is lying to it, mid-reply, which is what let a small echo
+    // leak escalate into a sustained loop. Half-duplex means this event should
+    // only fire while the agent is silent anyway.
     cancelFiller();
     events.onUserStartedSpeaking?.();
   });
@@ -214,27 +266,13 @@ export async function createVoiceSession(
     fillerTimer = setTimeout(() => session.injectAgentMessage(FILLER_MESSAGE), FILLER_DELAY_MS);
   });
   session.on("agent-started-speaking", () => {
-    trace("agent-started-speaking", { micGatedBefore: micGated });
     cancelFiller();
-    stopPlaybackPoll();
-    micGated = true;
+    gateMicWhileAgentSpeaks();
     events.onAgentStartedSpeaking?.();
   });
-  session.on("agent-audio-done", () => {
-    trace("agent-audio-done", { remainingPlaybackTime: player.getRemainingPlaybackTime() });
-    stopPlaybackPoll();
-    const checkPlaybackFinished = () => {
-      if (player.getRemainingPlaybackTime() <= 0) {
-        micGated = false;
-        trace("mic-ungated");
-        stopPlaybackPoll();
-      }
-    };
-    checkPlaybackFinished();
-    if (micGated) {
-      playbackPollTimer = setInterval(checkPlaybackFinished, PLAYBACK_POLL_INTERVAL_MS);
-    }
-  });
+  // No agent-audio-done handler by design — it's the transport's opinion about
+  // a turn being over, and acting on it is what this bug was made of. The gate
+  // above reopens itself once the player is genuinely drained.
   session.on("conversation-text", (message) =>
     events.onConversationText?.({ role: message.role, content: message.content }),
   );
@@ -244,18 +282,12 @@ export async function createVoiceSession(
 
   return {
     async start() {
-      trace("connect:start");
       await session.connect();
-      // connect() resolves once the socket is open, not once settings are
-      // confirmed — mic capture below can begin before settings-applied,
-      // which is worth seeing relative to the settings-applied trace above.
-      trace("connect:resolved (socket open, settings not necessarily applied yet)");
       await microphone.start();
-      trace("microphone:started");
     },
     stop() {
       cancelFiller();
-      stopPlaybackPoll();
+      cancelUngate();
       microphone.stop();
       player.dispose();
       session.disconnect();
