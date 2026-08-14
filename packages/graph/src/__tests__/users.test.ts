@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createUser, findUserByClerkId, listUsers, pingDatabase, prisma } from "../index";
+import {
+  completeOnboarding,
+  createUser,
+  findUserByClerkId,
+  listUsers,
+  pingDatabase,
+  prisma,
+} from "../index";
 
 const clerkIds: string[] = [];
 
@@ -35,6 +42,48 @@ describe("createUser / findUserByClerkId", () => {
 
   it("returns null for an unknown clerk id", async () => {
     expect(await findUserByClerkId("user_does_not_exist")).toBeNull();
+  });
+});
+
+describe("completeOnboarding", () => {
+  it("stores the profile and stamps onboardedAt", async () => {
+    const user = await makeUser("onboard");
+    expect(user.onboardedAt).toBeNull();
+
+    const updated = await completeOnboarding(user.id, {
+      displayName: "Pranav",
+      role: "Corporate lawyer at Sidley",
+      timezone: "America/New_York",
+    });
+
+    expect(updated.displayName).toBe("Pranav");
+    expect(updated.role).toBe("Corporate lawyer at Sidley");
+    expect(updated.timezone).toBe("America/New_York");
+    expect(updated.onboardedAt).toBeInstanceOf(Date);
+  });
+
+  it("keeps the optional answers null when they are skipped", async () => {
+    const user = await makeUser("skipped");
+
+    const updated = await completeOnboarding(user.id, { displayName: "Pranav" });
+
+    expect(updated.displayName).toBe("Pranav");
+    expect(updated.role).toBeNull();
+    expect(updated.timezone).toBeNull();
+    expect(updated.onboardedAt).toBeInstanceOf(Date);
+  });
+
+  // onboardedAt answers "when did this person first arrive", so re-running the
+  // flow must not rewrite it — otherwise the one durable signal we have about
+  // account age silently resets.
+  it("does not move onboardedAt when run a second time", async () => {
+    const user = await makeUser("rerun");
+    const first = await completeOnboarding(user.id, { displayName: "Pranav" });
+
+    const second = await completeOnboarding(user.id, { displayName: "Pranav K" });
+
+    expect(second.displayName).toBe("Pranav K");
+    expect(second.onboardedAt).toEqual(first.onboardedAt);
   });
 });
 

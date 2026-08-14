@@ -328,6 +328,43 @@ body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-f
 .danger{color:var(--red)!important}
 .warnpill{font-size:11px;font-weight:620;color:var(--amber);background:var(--amber-bg);
   border-radius:99px;padding:4px 9px;white-space:nowrap}
+
+/* ---------- meet Otto — the intro conversation ---------- */
+/* Otto's mark is the Headroom mark rounded off: same two bars, circle not
+   square. The assistant is of the product, not a second brand. */
+.otto{width:54px;height:54px;border-radius:99px;background:var(--violet);position:relative;
+  flex:0 0 54px;box-shadow:0 8px 22px rgba(91,79,233,.26)}
+.otto::after{content:"";position:absolute;left:14px;right:14px;top:19px;height:3px;background:#fff;
+  border-radius:3px;box-shadow:0 8px 0 rgba(255,255,255,.5)}
+.otto.sm{width:22px;height:22px;flex:0 0 22px;box-shadow:none}
+.otto.sm::after{left:6px;right:6px;top:8px;height:2px;box-shadow:0 4px 0 rgba(255,255,255,.5)}
+
+/* Big underlined field — a question being answered, not a form being filled */
+.fld{margin-top:30px}
+.fld label{display:block;font-size:11px;font-weight:640;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:11px}
+.fld .inp{border-bottom:1.5px solid var(--ink);padding:0 0 11px;font-size:25px;font-weight:620;
+  letter-spacing:-.028em;color:var(--ink);display:flex;align-items:center}
+.fld .inp.ghost{color:var(--ink-3);font-weight:560;border-bottom-color:var(--line)}
+.fld .inp.mid{font-size:19px;font-weight:580;letter-spacing:-.02em}
+.fld .caret{width:2px;height:26px;background:var(--violet);margin-left:2px;border-radius:2px}
+.fld .hint{font-size:12.5px;color:var(--ink-3);margin-top:11px;line-height:1.45}
+
+/* Shown, never asked — anything the device already told us */
+.derived{display:flex;align-items:center;gap:11px;margin-top:26px;padding:13px 14px;
+  border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface-2);font-size:13.5px}
+.derived .t{flex:1;color:var(--ink-2)}
+.derived .t b{font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.derived .chg{font-size:12.5px;font-weight:620;color:var(--violet-ink)}
+
+.next{margin-top:28px;border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+.next .r{display:flex;gap:12px;align-items:flex-start;padding:15px;
+  border-bottom:1px solid var(--line-2);font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.next .r:last-child{border-bottom:0}
+.next .r b{color:var(--ink);font-weight:600}
+.next .n{width:20px;height:20px;border-radius:99px;background:var(--violet-bg);color:var(--violet-ink);
+  flex:0 0 20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+  margin-top:1px}
 </style>
 </head>
 <body>
@@ -337,6 +374,11 @@ body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-f
     <h1>Headroom — screen prototype</h1>
     <p>Three destinations: Brief, Commitments, Ledger. Voice is an overlay, not a tab. Commitment
        detail is a push. Light mode, white / near-black, single indigo accent.</p>
+    <p>The assistant is <b>Otto</b>. Onboarding (8–10) is a three-card conversation, not a form:
+       Otto introduces itself, asks your name and one line about what you do, then hands off to
+       setup. Anything the device already knows — your name from Google, your timezone — is
+       shown for correction rather than asked. Screen 15 is why it matters: an empty graph
+       reading as someone waiting instead of a blank page.</p>
     <div class="swatches">
       <div class="sw"><i style="background:#FFFFFF;border:1px solid #E9EAEF"></i>#FFFFFF</div>
       <div class="sw"><i style="background:#101219"></i>#101219 ink</div>
@@ -831,9 +873,110 @@ body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-f
     </div>
   </div>
 
-  <!-- ============ 8. SETUP — CONNECT SOURCES ============ -->
+  <!-- ============ 8. MEET OTTO — YOUR NAME ============ -->
   <div class="frame-wrap">
-    <div class="frame-label">8 · Setup <span>connect sources</span></div>
+    <div class="frame-label">8 · Meet Otto <span>the assistant introduces itself</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="ob">
+        <div class="steps"><i class="on"></i><i></i><i></i></div>
+
+        <div style="margin-top:44px">
+          <div class="otto"></div>
+          <div class="ob-h" style="margin-top:26px;font-size:27px">Hi — I&rsquo;m Otto.</div>
+          <div class="ob-sub" style="font-size:14.5px">I keep track of what you&rsquo;ve promised and tell
+            you what&rsquo;s actually at risk. First — what should I call you?</div>
+        </div>
+
+        <div class="fld">
+          <label>Your name</label>
+          <div class="inp">Pranav<div class="caret"></div></div>
+          <div class="hint">From your Google account. Change it if you&rsquo;d rather.</div>
+        </div>
+
+        <div class="ob-foot">
+          <button class="big">Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 9. MEET OTTO — WHAT YOU DO ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">9 · Meet Otto <span>one line of context · timezone is shown, not asked</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="ob">
+        <div class="steps"><i class="on"></i><i class="on"></i><i></i></div>
+
+        <div style="margin-top:44px">
+          <div class="ob-h" style="font-size:27px">And what do<br>you do, Pranav?</div>
+          <div class="ob-sub" style="font-size:14.5px">One line is plenty. It helps me tell a real
+            promise from an aside.</div>
+        </div>
+
+        <div class="fld">
+          <label>What you do</label>
+          <div class="inp mid ghost">Corporate lawyer at Sidley</div>
+        </div>
+
+        <div class="derived">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ink-3)"
+            stroke-width="2" stroke-linecap="round" style="flex:0 0 16px">
+            <circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.2 1.9"/></svg>
+          <div class="t"><b>New York</b> · UTC−4</div>
+          <div class="chg">Change</div>
+        </div>
+
+        <div class="ob-foot">
+          <button class="big">Continue</button>
+          <button class="skip">Skip for now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 10. MEET OTTO — HANDOFF ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">10 · Meet Otto <span>handoff into setup</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="ob">
+        <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i></div>
+
+        <div style="margin-top:44px">
+          <div class="ob-h" style="font-size:27px">Good to meet<br>you, Pranav.</div>
+          <div class="ob-sub" style="font-size:14.5px">I don&rsquo;t know anything about your week yet.
+            Here&rsquo;s how that changes.</div>
+        </div>
+
+        <div class="next">
+          <div class="r"><div class="n">1</div>
+            <div><b>You connect a source.</b> Gmail, Calendar, GitHub — whichever you actually live in.</div></div>
+          <div class="r"><div class="n">2</div>
+            <div><b>I read the last 90 days</b> and pull out every promise I can find, with a quote for each one.</div></div>
+          <div class="r"><div class="n">3</div>
+            <div><b>You tell me which ones I got wrong.</b> That&rsquo;s the whole way I get sharper.</div></div>
+        </div>
+
+        <div class="ob-foot">
+          <button class="big">Connect my first source</button>
+          <div class="ob-note">I only ever read. Nothing gets sent on your behalf without you
+            tapping send.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 11. SETUP — CONNECT SOURCES ============ -->
+  <div class="frame-wrap">
+    <div class="frame-label">11 · Setup <span>connect sources</span></div>
     <div class="phone">
       <div class="statusbar"><div>9:41</div><div class="sb-right">
         <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
@@ -895,9 +1038,9 @@ body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-f
     </div>
   </div>
 
-  <!-- ============ 9. BACKFILL ============ -->
+  <!-- ============ 12. BACKFILL ============ -->
   <div class="frame-wrap">
-    <div class="frame-label">9 · First run <span>backfill — the trust moment</span></div>
+    <div class="frame-label">12 · First run <span>backfill — the trust moment</span></div>
     <div class="phone">
       <div class="statusbar"><div>9:41</div><div class="sb-right">
         <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
@@ -937,9 +1080,9 @@ body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-f
     </div>
   </div>
 
-  <!-- ============ 10. CONFIRM EXTRACTION ============ -->
+  <!-- ============ 13. CONFIRM EXTRACTION ============ -->
   <div class="frame-wrap">
-    <div class="frame-label">10 · Confirm <span>onboarding doubles as the eval set</span></div>
+    <div class="frame-label">13 · Confirm <span>onboarding doubles as the eval set</span></div>
     <div class="phone">
       <div class="statusbar"><div>9:41</div><div class="sb-right">
         <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
@@ -986,9 +1129,9 @@ body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-f
     </div>
   </div>
 
-  <!-- ============ 11. ACCOUNT ============ -->
+  <!-- ============ 14. ACCOUNT ============ -->
   <div class="frame-wrap">
-    <div class="frame-label">11 · Account <span>where autonomy is granted</span></div>
+    <div class="frame-label">14 · Account <span>where autonomy is granted</span></div>
     <div class="phone">
       <div class="statusbar"><div>9:41</div><div class="sb-right">
         <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
@@ -1099,6 +1242,66 @@ body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-f
           <div class="arow"><div class="t" style="text-align:center"><b class="danger">Sign out</b></div></div>
         </div>
         <div style="height:40px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 15. BRIEF — FIRST RUN ============ -->
+  <!-- The payoff for onboarding. Today this screen reads "Nothing here yet."
+       with no source connected and nobody home. Once Otto has a name and
+       knows yours, an empty graph reads as someone waiting rather than a
+       broken page — and it has somewhere to send you. -->
+  <div class="frame-wrap">
+    <div class="frame-label">15 · Brief <span>first run — the empty state, in Otto&rsquo;s voice</span></div>
+    <div class="phone">
+      <div class="statusbar"><div>9:41</div><div class="sb-right">
+        <div class="bars"><i></i><i></i><i></i><i></i></div><div class="batt"></div></div></div>
+
+      <div class="screen pad">
+        <div style="height:26px"></div>
+        <div class="eyebrow">Wednesday 13 August</div>
+        <div class="display">Morning, Pranav.</div>
+        <div class="sub">Nothing to report — I haven&rsquo;t read anything yet.</div>
+
+        <div class="assist" style="margin-top:24px">
+          <div class="assist-h"><div class="otto sm"></div>Otto</div>
+          <div class="assist-b">Give me a source and I&rsquo;ll go looking. Gmail is where most promises
+            actually get made — it takes about five minutes to read your last 90 days.</div>
+          <div class="assist-acts">
+            <button class="btn-v">Connect Gmail</button>
+            <button class="btn-t">See all sources</button>
+          </div>
+        </div>
+
+        <div class="sec-head"><div class="eyebrow">What&rsquo;ll show up here</div></div>
+        <div class="ontrack">
+          <div class="ot-row" style="color:var(--ink-3)">
+            <div class="pend" style="width:15px;height:15px;flex:0 0 15px"></div>
+            <span>Promises you&rsquo;ve made, with the quote you made them in</span></div>
+          <div class="ot-row" style="color:var(--ink-3)">
+            <div class="pend" style="width:15px;height:15px;flex:0 0 15px"></div>
+            <span>What&rsquo;s at risk, and why — before it&rsquo;s late</span></div>
+          <div class="ot-row" style="color:var(--ink-3)">
+            <div class="pend" style="width:15px;height:15px;flex:0 0 15px"></div>
+            <span>What you&rsquo;re owed, and who&rsquo;s gone quiet</span></div>
+        </div>
+
+        <div style="height:120px"></div>
+      </div>
+
+      <div class="mic-hint">Hold</div>
+      <div class="mic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
+          <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0"/><path d="M12 17.5V21"/></svg>
+      </div>
+
+      <div class="tabbar">
+        <div class="tab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M4 6h16M4 12h11M4 18h7"/></svg>Brief</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M9 11l2.5 2.5L16 8"/><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/></svg>Commitments</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round"><path d="M12 7v5l3.5 2"/><circle cx="12" cy="12" r="8.5"/></svg>Ledger</div>
       </div>
     </div>
   </div>

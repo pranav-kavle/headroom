@@ -21,9 +21,20 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
-  id           String   @id @default(uuid())
-  clerkUserId  String   @unique @map("clerk_user_id")
-  email        String
+  id          String @id @default(uuid())
+  clerkUserId String @unique @map("clerk_user_id")
+  email       String
+
+  // Gathered by the /welcome flow. All nullable: `onboardedAt` is the only one
+  // that gates anything — it is what distinguishes "hasn't been through
+  // /welcome" from "went through it and skipped the optional questions".
+  // `timezone` is an IANA zone read off the browser and shown for correction,
+  // never asked cold.
+  displayName String?   @map("display_name")
+  role        String?
+  timezone    String?
+  onboardedAt DateTime? @map("onboarded_at")
+
   selfPersonId String?  @unique @map("self_person_id")
   createdAt    DateTime @default(now()) @map("created_at")
 

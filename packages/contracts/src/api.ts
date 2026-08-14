@@ -15,10 +15,31 @@ export const UserSummary = z.object({
 });
 export type UserSummary = z.infer<typeof UserSummary>;
 
+// The profile fields live on /me rather than on UserSummary because
+// UserSummary is also the shape of the /users list, which has no business
+// carrying anyone's onboarding answers.
+export const MeUser = UserSummary.extend({
+  displayName: z.string().nullable(),
+  role: z.string().nullable(),
+  timezone: z.string().nullable(),
+  onboardedAt: z.iso.datetime().nullable(),
+});
+export type MeUser = z.infer<typeof MeUser>;
+
 export const MeResponse = z.object({
-  user: UserSummary,
+  user: MeUser,
 });
 export type MeResponse = z.infer<typeof MeResponse>;
+
+// Body of PATCH /api/v1/me — the answers from the /welcome flow. Only
+// displayName is required; the second card is skippable, and timezone is read
+// off the browser rather than typed.
+export const CompleteOnboardingRequest = z.object({
+  displayName: z.string().trim().min(1).max(80),
+  role: z.string().trim().max(140).nullish(),
+  timezone: z.string().trim().max(64).nullish(),
+});
+export type CompleteOnboardingRequest = z.infer<typeof CompleteOnboardingRequest>;
 
 export const UsersResponse = z.object({
   users: z.array(UserSummary),
