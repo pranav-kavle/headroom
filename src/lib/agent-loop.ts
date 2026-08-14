@@ -163,13 +163,18 @@ export async function runAgentTurn(input: {
 
   const finish = (text: string, options: { refused?: boolean } = {}): AgentTurnResult => {
     const violations = verifySpokenText({ text, evidence, aboutUser });
+    // Only the checks that earn it take the reply away — see ViolationSeverity.
+    const withheld = violations.some((v) => v.severity === "withheld");
     return {
       turnId,
       // §4: an unverifiable statement about the user's life is not utterable.
       // The reply is replaced rather than annotated — there is no version of
       // "say it anyway, but flag it" that is compatible with core rule 1.
-      text: violations.length > 0 ? UNVERIFIED_TEXT : text,
-      citations,
+      text: withheld ? UNVERIFIED_TEXT : text,
+      // Citations belong to the claim they back. Once the claim is withheld,
+      // the spoken text is our own fallback, and rendering evidence beside it
+      // would attach provenance to a sentence that makes no claim at all.
+      citations: withheld ? [] : citations,
       toolCalls,
       blocked,
       violations,

@@ -45,6 +45,7 @@ describe("verifySpokenText", () => {
 
     expect(violations).toHaveLength(1);
     expect(violations[0].kind).toBe("unsourced_number");
+    expect(violations[0].severity).toBe("withheld");
     expect(violations[0].detail).toContain("4");
   });
 
@@ -124,5 +125,68 @@ describe("verifySpokenText", () => {
     });
 
     expect(violations).toHaveLength(1);
+  });
+
+  // The digit check's blind spot: the prompt tells the model to speak numbers
+  // as words, so a fabricated figure is far more likely to arrive as "four"
+  // than as "4".
+  describe("numbers spelled as words", () => {
+    it("catches a spelled count that matches no figure in the evidence", () => {
+      const violations = verifySpokenText({
+        text: "You have four things open.",
+        evidence: EVIDENCE,
+        aboutUser: true,
+      });
+
+      expect(violations.map((v) => v.kind)).toEqual(["unsourced_spoken_number"]);
+    });
+
+    it("accepts a spelled count that matches a figure by value", () => {
+      const violations = verifySpokenText({
+        text: "Just the one — Maya's deck.",
+        evidence: EVIDENCE,
+        aboutUser: true,
+      });
+
+      expect(violations).toEqual([]);
+    });
+
+    // "the fourteenth" is backed by a dueAt of 2026-08-14 — the comparison is
+    // by value, not by spelling, or every date the agent said properly would
+    // trip it.
+    it("accepts an ordinal backed by a date in the evidence", () => {
+      const violations = verifySpokenText({
+        text: "It's due on the fourteenth.",
+        evidence: EVIDENCE,
+        aboutUser: true,
+      });
+
+      expect(violations).toEqual([]);
+    });
+
+    // This check is noisy by nature — "one moment" is a violation by the
+    // letter and nothing by the spirit — so it records rather than silences.
+    // Promoting it to `withheld` is a decision to make once its real rate is
+    // known, not a guess to bake in now.
+    it("flags rather than withholds, because it is the check most likely to be wrong", () => {
+      const violations = verifySpokenText({
+        text: "One moment.",
+        evidence: ["nothing numeric here"],
+        aboutUser: true,
+      });
+
+      expect(violations).toHaveLength(1);
+      expect(violations[0].severity).toBe("flagged");
+    });
+
+    it("stays out of ordinary conversation, like the digit check", () => {
+      const violations = verifySpokenText({
+        text: "There were three of them.",
+        evidence: [],
+        aboutUser: false,
+      });
+
+      expect(violations).toEqual([]);
+    });
   });
 });

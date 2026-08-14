@@ -337,6 +337,41 @@ describe("runAgentTurn", () => {
       expect(result.violations).toEqual([]);
     });
 
+    // Provenance belongs to the claim it backs. Once the claim is gone, the
+    // spoken text is our own fallback — rendering evidence beside it would put
+    // citations under a sentence that claims nothing.
+    it("takes the citations away with the claim they backed", async () => {
+      const result = await runAgentTurn({
+        messages: [{ role: "user", content: "what do I owe?" }],
+        principal: PRINCIPAL,
+        context: CONTEXT,
+        client: creator(toolReply("get_state"), textReply("You have 9 things open.")),
+        tools: [{ ...echoTool, aboutUser: true }],
+      });
+
+      expect(result.text).toBe(
+        "Sorry — I don't want to give you a number I can't back up. Let me check that again.",
+      );
+      expect(result.citations).toEqual([]);
+    });
+
+    // A flagged violation is telemetry, not a veto — the spelled-number check
+    // is too noisy to silence the assistant with.
+    it("records a flagged violation without withholding the reply", async () => {
+      const result = await runAgentTurn({
+        messages: [{ role: "user", content: "what do I owe?" }],
+        principal: PRINCIPAL,
+        context: CONTEXT,
+        client: creator(toolReply("get_state"), textReply("You have four things open.")),
+        tools: [{ ...echoTool, aboutUser: true }],
+      });
+
+      // Still spoken, and recorded — this documents the current limit rather
+      // than hiding it: a fabricated count spelled as a word gets through.
+      expect(result.text).toBe("You have four things open.");
+      expect(result.violations.map((v) => v.severity)).toEqual(["flagged"]);
+    });
+
     // The check is scoped to claims about the user's life, so ordinary
     // conversation is untouched.
     it("leaves an ordinary answer alone when no tool about the user ran", async () => {
