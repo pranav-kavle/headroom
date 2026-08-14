@@ -2,7 +2,7 @@ export { prisma, pingDatabase } from "./client";
 export type { PrismaClient } from "./client";
 export { completeOnboarding, createUser, findUserByClerkId, listUsers } from "./users";
 export type { OnboardingInput, UserRow } from "./users";
-export { createArtifact } from "./artifacts";
+export { createArtifact, findArtifactBySourceExternalId } from "./artifacts";
 export type { ArtifactRow } from "./artifacts";
 export { ensureSelfPerson, resolvePerson } from "./people";
 export type { PersonRow } from "./people";
