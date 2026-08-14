@@ -97,6 +97,13 @@ const injectAgentMessage = vi.fn();
 // timing (e.g. the plain agent-audio-done resume test) see the mic un-gate
 // immediately, matching their pre-existing expectations.
 const playerGetRemainingPlaybackTime = vi.fn().mockReturnValue(0);
+const micMute = vi.fn();
+const micUnmute = vi.fn();
+// The SDK's analysers keep reporting whatever the room is doing regardless of
+// whether that audio is being sent anywhere — which is the whole reason the
+// level accessors below need their own gating rather than passing these through.
+const micGetInputVolume = vi.fn().mockReturnValue(0);
+const playerGetOutputVolume = vi.fn().mockReturnValue(0);
 let lastMicFrameCallback: ((data: ArrayBuffer) => void) | undefined;
 
 vi.mock("@deepgram/agents", () => ({
@@ -111,15 +118,152 @@ vi.mock("@deepgram/agents", () => ({
   })),
   AgentMicrophone: vi.fn().mockImplementation((onAudioFrame: (data: ArrayBuffer) => void) => {
     lastMicFrameCallback = onAudioFrame;
-    return { start: micStart, stop: micStop };
+    return {
+      start: micStart,
+      stop: micStop,
+      mute: micMute,
+      unmute: micUnmute,
+      getInputVolume: micGetInputVolume,
+    };
   }),
   AgentPlayer: vi.fn().mockImplementation(() => ({
     queue: playerQueue,
     interrupt: playerInterrupt,
     dispose: playerDispose,
     getRemainingPlaybackTime: playerGetRemainingPlaybackTime,
+    getOutputVolume: playerGetOutputVolume,
   })),
 }));
+
+const TOKEN_RESPONSE = () =>
+  new Response(
+    JSON.stringify({ deepgramAccessToken: "dg-jwt", deepgramExpiresInSeconds: 30, thinkAuthToken: "t" }),
+  );
+const THINK_URL = "https://app.example.com/api/v1/agent/think";
+
+// Everything the voice UI needs in order to describe the session honestly:
+// what it is doing right now, whether the mic is genuinely open, and how loud
+// the audio actually is. Core rule 5 — when the engine cannot determine
+// something it asks rather than guessing — has a UI corollary: the screen may
+// not animate a signal it does not have.
+describe("what the session reports about itself", () => {
+  it("tells the caller when the agent is thinking, so the UI need not call it listening", async () => {
+    const onAgentThinking = vi.fn();
+
+    await createVoiceSession(
+      { onAgentThinking },
+      { fetchImpl: vi.fn().mockResolvedValue(TOKEN_RESPONSE()), thinkEndpointUrl: THINK_URL },
+    );
+    sessionHandlers.get("agent-thinking")?.();
+
+    expect(onAgentThinking).toHaveBeenCalled();
+  });
+
+  it("reports the mic as closed while the agent is speaking", async () => {
+    const session = await createVoiceSession(
+      {},
+      { fetchImpl: vi.fn().mockResolvedValue(TOKEN_RESPONSE()), thinkEndpointUrl: THINK_URL },
+    );
+    await session.start();
+    expect(session.isMicOpen()).toBe(true);
+
+    playerGetRemainingPlaybackTime.mockReturnValue(1.5);
+    sessionHandlers.get("audio")?.(new ArrayBuffer(8));
+
+    expect(session.isMicOpen()).toBe(false);
+    playerGetRemainingPlaybackTime.mockReturnValue(0);
+  });
+
+  // The mic analyser is still live while the gate is shut, and what it is
+  // hearing at that moment is the agent's own voice coming out of the speaker.
+  // Passing that through would make the orb dance to the agent while the label
+  // says the mic is closed — the UI contradicting itself in the one place the
+  // user is watching for reassurance.
+  it("reports no input level while the mic is gated, even though the analyser still hears the room", async () => {
+    const session = await createVoiceSession(
+      {},
+      { fetchImpl: vi.fn().mockResolvedValue(TOKEN_RESPONSE()), thinkEndpointUrl: THINK_URL },
+    );
+    await session.start();
+    micGetInputVolume.mockReturnValue(0.9);
+    expect(session.getInputLevel()).toBeCloseTo(0.9);
+
+    playerGetRemainingPlaybackTime.mockReturnValue(1.5);
+    sessionHandlers.get("audio")?.(new ArrayBuffer(8));
+
+    expect(session.getInputLevel()).toBe(0);
+    playerGetRemainingPlaybackTime.mockReturnValue(0);
+    micGetInputVolume.mockReturnValue(0);
+  });
+
+  it("reports the agent's own output level, so a speaking indicator tracks real audio", async () => {
+    const session = await createVoiceSession(
+      {},
+      { fetchImpl: vi.fn().mockResolvedValue(TOKEN_RESPONSE()), thinkEndpointUrl: THINK_URL },
+    );
+    playerGetOutputVolume.mockReturnValue(0.6);
+
+    expect(session.getOutputLevel()).toBeCloseTo(0.6);
+    playerGetOutputVolume.mockReturnValue(0);
+  });
+
+  describe("muting", () => {
+    it("stops mic frames leaving the client, rather than only dimming the indicator", async () => {
+      const session = await createVoiceSession(
+        {},
+        { fetchImpl: vi.fn().mockResolvedValue(TOKEN_RESPONSE()), thinkEndpointUrl: THINK_URL },
+      );
+      await session.start();
+      sendAudio.mockClear();
+
+      session.setMuted(true);
+      lastMicFrameCallback?.(new ArrayBuffer(4));
+
+      expect(sendAudio).not.toHaveBeenCalled();
+      expect(session.isMicOpen()).toBe(false);
+      expect(micMute).toHaveBeenCalled();
+    });
+
+    it("reopens the mic on unmute", async () => {
+      const session = await createVoiceSession(
+        {},
+        { fetchImpl: vi.fn().mockResolvedValue(TOKEN_RESPONSE()), thinkEndpointUrl: THINK_URL },
+      );
+      await session.start();
+      session.setMuted(true);
+      session.setMuted(false);
+      sendAudio.mockClear();
+
+      const frame = new ArrayBuffer(4);
+      lastMicFrameCallback?.(frame);
+
+      expect(sendAudio).toHaveBeenCalledWith(frame);
+      expect(session.isMicOpen()).toBe(true);
+      expect(micUnmute).toHaveBeenCalled();
+    });
+
+    // Unmuting mid-reply must not undo the echo gate — the two are separate
+    // reasons for the mic to be shut, and the user can only lift one of them.
+    it("keeps the echo gate shut when the user unmutes while the agent is still speaking", async () => {
+      const session = await createVoiceSession(
+        {},
+        { fetchImpl: vi.fn().mockResolvedValue(TOKEN_RESPONSE()), thinkEndpointUrl: THINK_URL },
+      );
+      await session.start();
+      playerGetRemainingPlaybackTime.mockReturnValue(1.5);
+      sessionHandlers.get("audio")?.(new ArrayBuffer(8));
+      session.setMuted(true);
+      session.setMuted(false);
+      sendAudio.mockClear();
+
+      lastMicFrameCallback?.(new ArrayBuffer(4));
+
+      expect(sendAudio).not.toHaveBeenCalled();
+      expect(session.isMicOpen()).toBe(false);
+      playerGetRemainingPlaybackTime.mockReturnValue(0);
+    });
+  });
+});
 
 describe("createVoiceSession", () => {
   it("primes the player's audio context synchronously, inside the caller's gesture — §9 gotcha #1", () => {

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentCitation, AgentTurnsResponse } from "@headroom/contracts";
 import { createVoiceSession, type VoiceSession } from "@/lib/voice-session";
 import { VoiceFab } from "./VoiceFab";
-import { VoiceSheet } from "./VoiceSheet";
+import { VoiceStage } from "./VoiceStage";
 import { VoiceRecorder, type VoiceStatus, type VoiceTurn } from "./VoiceRecorder";
 
 // Citations for a turn are produced inside /api/v1/agent/think and never
@@ -24,6 +24,10 @@ async function fetchCitationsFor(spoken: string): Promise<AgentCitation[]> {
   return turns.find((turn) => turn.text === spoken)?.citations ?? [];
 }
 
+// The echo gate opens and closes on the playback clock, not on any event the
+// UI can subscribe to, so the only truthful way to render it is to ask.
+const MIC_POLL_INTERVAL_MS = 100;
+
 export function VoiceOverlay() {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<VoiceStatus>("idle");
@@ -32,6 +36,8 @@ export function VoiceOverlay() {
   // collapsing all three into one generic "Something went wrong".
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [turns, setTurns] = useState<VoiceTurn[]>([]);
+  const [muted, setMuted] = useState(false);
+  const [micOpen, setMicOpen] = useState(false);
   const sessionRef = useRef<VoiceSession | null>(null);
   // Guards the async gap in start() below — connect() is in flight while
   // status is "connecting" and sessionRef is still null, so a stop() called
@@ -39,25 +45,39 @@ export function VoiceOverlay() {
   // in-flight .then() resolves afterwards regardless and resurrects the
   // session the user already tried to exit.
   const cancelledRef = useRef(false);
+  // Read inside a 60fps animation frame in VoiceOrb, so it must not be a
+  // dependency of the callback it is read from — a new getLevel identity every
+  // status change would restart the orb's loop mid-utterance.
+  const statusRef = useRef<VoiceStatus>(status);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const handleConversationText = useCallback((message: { role: string; content: string }) => {
     const role: "user" | "assistant" = message.role === "assistant" ? "assistant" : "user";
-    let insertedIndex = -1;
-    setTurns((prev) => {
-      insertedIndex = prev.length;
-      return [...prev, { role, content: message.content, citations: [] }];
-    });
+    // Identified by object reference rather than by index: the index was
+    // captured inside a setState updater, which React may run more than once.
+    const turn: VoiceTurn = {
+      role,
+      content: message.content,
+      citations: [],
+      citationsPending: role === "assistant",
+    };
+    setTurns((prev) => [...prev, turn]);
 
     if (role === "assistant") {
-      void fetchCitationsFor(message.content).then((citations) => {
-        if (citations.length === 0) return;
-        setTurns((prev) => {
-          if (insertedIndex < 0 || insertedIndex >= prev.length) return prev;
-          const next = [...prev];
-          next[insertedIndex] = { ...next[insertedIndex], citations };
-          return next;
+      void fetchCitationsFor(message.content)
+        .catch(() => [] as AgentCitation[])
+        // Always clears the pending slot, including on an empty result — a
+        // reserved space that never resolves is its own kind of lie.
+        .then((citations) => {
+          setTurns((prev) =>
+            prev.map((existing) =>
+              existing === turn ? { ...existing, citations, citationsPending: false } : existing,
+            ),
+          );
         });
-      });
     }
   }, []);
 
@@ -66,6 +86,8 @@ export function VoiceOverlay() {
     sessionRef.current?.stop();
     sessionRef.current = null;
     setStatus("idle");
+    setMicOpen(false);
+    setMuted(false);
   }, []);
 
   const start = useCallback(() => {
@@ -78,12 +100,14 @@ export function VoiceOverlay() {
     setStatus("connecting");
     setErrorMessage(undefined);
     setTurns([]);
+    setMuted(false);
 
     void createVoiceSession(
       {
         onConversationText: handleConversationText,
         onAgentStartedSpeaking: () => setStatus("speaking"),
         onUserStartedSpeaking: () => setStatus("listening"),
+        onAgentThinking: () => setStatus("thinking"),
         onDisconnected: () => {
           sessionRef.current = null;
           // cancelledRef is only set ahead of a deliberate stop() — a
@@ -126,7 +150,7 @@ export function VoiceOverlay() {
       });
   }, [handleConversationText]);
 
-  const toggle = useCallback(() => {
+  const toggleSession = useCallback(() => {
     if (status === "idle" || status === "error") {
       start();
     } else {
@@ -134,8 +158,34 @@ export function VoiceOverlay() {
     }
   }, [status, start, stop]);
 
-  // Single tap: open the sheet and start listening in the same gesture. Has
-  // to call start() synchronously here, before the sheet (and VoiceRecorder)
+  const toggleMute = useCallback(() => {
+    const session = sessionRef.current;
+    if (!session) return;
+    setMuted((wasMuted) => {
+      session.setMuted(!wasMuted);
+      return !wasMuted;
+    });
+  }, []);
+
+  const getLevel = useCallback(() => {
+    const session = sessionRef.current;
+    if (!session) return 0;
+    return statusRef.current === "speaking" ? session.getOutputLevel() : session.getInputLevel();
+  }, []);
+
+  // Whether the mic is genuinely open is not derivable from status: the echo
+  // gate keeps it shut for a further 300ms after playback drains, and the user
+  // can mute independently. Ask the session rather than inferring.
+  useEffect(() => {
+    if (!open) return;
+    const poll = setInterval(() => {
+      setMicOpen(sessionRef.current?.isMicOpen() ?? false);
+    }, MIC_POLL_INTERVAL_MS);
+    return () => clearInterval(poll);
+  }, [open]);
+
+  // Single tap: open the stage and start listening in the same gesture. Has
+  // to call start() synchronously here, before the stage (and VoiceRecorder)
   // ever mounts — deferring the session creation to an effect after mount
   // would run outside the tap's call stack and lose the same iOS
   // gesture-context link described in start() above.
@@ -156,7 +206,7 @@ export function VoiceOverlay() {
   useEffect(() => {
     if (!open) return;
 
-    window.history.pushState({ voiceSheet: true }, "");
+    window.history.pushState({ voiceStage: true }, "");
 
     const onPopState = () => {
       setOpen(false);
@@ -175,7 +225,7 @@ export function VoiceOverlay() {
   }, [open, requestClose, stop]);
 
   // Covers the overlay itself unmounting (e.g. a route change) while a
-  // session is still active — the popstate path above only covers the sheet
+  // session is still active — the popstate path above only covers the stage
   // closing on its own page.
   useEffect(() => {
     return () => {
@@ -189,9 +239,19 @@ export function VoiceOverlay() {
     <>
       <VoiceFab onOpen={openAndStart} />
       {open && (
-        <VoiceSheet onClose={requestClose}>
-          <VoiceRecorder status={status} errorMessage={errorMessage} turns={turns} onToggleMic={toggle} />
-        </VoiceSheet>
+        <VoiceStage>
+          <VoiceRecorder
+            status={status}
+            errorMessage={errorMessage}
+            turns={turns}
+            micOpen={micOpen}
+            muted={muted}
+            getLevel={getLevel}
+            onToggleSession={toggleSession}
+            onToggleMute={toggleMute}
+            onClose={requestClose}
+          />
+        </VoiceStage>
       )}
     </>
   );
