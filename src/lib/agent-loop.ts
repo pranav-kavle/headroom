@@ -150,6 +150,7 @@ export async function runAgentTurn(input: {
   const blocked: BlockedCall[] = [];
   const startedAt = Date.now();
   const turnId = randomUUID();
+  let lastText = "";
 
   // Everything this turn is entitled to have taken a figure from: the resolved
   // dates it was handed, the user's own words, and — appended as they arrive —
@@ -208,6 +209,12 @@ export async function runAgentTurn(input: {
     }
 
     messages.push({ role: "assistant", content: response.content });
+
+    // A tool-calling response can carry prose alongside the call. Keeping it
+    // means hitting the turn ceiling below costs the user the *extra* work the
+    // model wanted to do, not the answer it already gave.
+    const saidSoFar = textOf(response.content);
+    if (saidSoFar) lastText = saidSoFar;
 
     const toolStart = Date.now();
     const results = [];
@@ -272,5 +279,7 @@ export async function runAgentTurn(input: {
     messages.push({ role: "user", content: results });
   }
 
-  return finish("I got stuck working that out.");
+  // Out of turns. Say what was actually said if anything was — the ceiling is
+  // a bound on the model's *work*, not a reason to discard its answer.
+  return finish(lastText || "I got stuck working that out.");
 }

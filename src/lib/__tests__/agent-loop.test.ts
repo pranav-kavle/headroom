@@ -138,6 +138,53 @@ describe("runAgentTurn", () => {
     expect((client.create as ReturnType<typeof vi.fn>).mock.calls.length).toBeLessThanOrEqual(5);
   });
 
+  // Hitting the turn ceiling used to throw away whatever the model had
+  // actually said and substitute "I got stuck" — the user heard a failure
+  // even when a perfectly good answer had been produced along the way.
+  it("speaks the last thing the model said rather than discarding it at the turn ceiling", async () => {
+    const client = creator(
+      { stop_reason: "tool_use", content: [{ type: "tool_use", id: "t1", name: "get_state", input: {} }] },
+      {
+        stop_reason: "tool_use",
+        content: [
+          { type: "text", text: "You owe Maya the deck." },
+          { type: "tool_use", id: "t2", name: "get_state", input: {} },
+        ],
+      },
+      toolReply("get_state"),
+      toolReply("get_state"),
+      toolReply("get_state"),
+    );
+
+    const result = await runAgentTurn({
+      messages: [{ role: "user", content: "loop" }],
+      principal: PRINCIPAL,
+      context: CONTEXT,
+      client,
+      tools: [echoTool],
+    });
+
+    expect(result.text).toBe("You owe Maya the deck.");
+  });
+
+  it("says so plainly when the ceiling is hit with nothing said at all", async () => {
+    const result = await runAgentTurn({
+      messages: [{ role: "user", content: "loop" }],
+      principal: PRINCIPAL,
+      context: CONTEXT,
+      client: creator(
+        toolReply("get_state"),
+        toolReply("get_state"),
+        toolReply("get_state"),
+        toolReply("get_state"),
+        toolReply("get_state"),
+      ),
+      tools: [echoTool],
+    });
+
+    expect(result.text).toMatch(/stuck/i);
+  });
+
   // Bug 9/10: nothing bounded how long a model call could take, so a hung
   // Anthropic request stalled the whole voice turn indefinitely with no
   // user-facing signal at all.
