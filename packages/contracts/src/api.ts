@@ -96,3 +96,11 @@ export const HealthResponse = z.discriminatedUnion("status", [
   }),
 ]);
 export type HealthResponse = z.infer<typeof HealthResponse>;
+
+// POST /api/v1/integrations/github/sync — a plain count, not a list, so the
+// wire payload stays small regardless of how many commitments a sync touches.
+export const GithubSyncResponse = z.object({
+  created: z.number(),
+  closed: z.number(),
+});
+export type GithubSyncResponse = z.infer<typeof GithubSyncResponse>;
