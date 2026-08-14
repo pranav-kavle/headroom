@@ -198,6 +198,27 @@
   white-space: nowrap;
 }
 
+.actionpill {
+  font-size: 10.5px;
+  font-weight: 640;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hr-violet-ink);
+  background: var(--hr-violet-bg);
+  border: 1px solid var(--hr-violet-line);
+  border-radius: 999px;
+  padding: 4px 9px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.actionpill:disabled {
+  color: var(--hr-ink-3);
+  background: var(--hr-surface-2);
+  border-color: var(--hr-line);
+  cursor: default;
+}
+
 .guard {
   margin-top: 11px;
   background: var(--hr-violet-bg);
