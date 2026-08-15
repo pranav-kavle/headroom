@@ -11,6 +11,7 @@ const listCommitments = vi.fn();
 const upsertConnectorCursor = vi.fn();
 const upsertTrackedPullRequest = vi.fn();
 const listOpenTrackedPullRequests = vi.fn();
+const listRecentlyClosedTrackedPullRequests = vi.fn();
 const closeTrackedPullRequest = vi.fn();
 
 vi.mock("@headroom/graph", () => ({
@@ -25,6 +26,8 @@ vi.mock("@headroom/graph", () => ({
   upsertConnectorCursor: (input: unknown) => upsertConnectorCursor(input),
   upsertTrackedPullRequest: (input: unknown) => upsertTrackedPullRequest(input),
   listOpenTrackedPullRequests: (userId: string) => listOpenTrackedPullRequests(userId),
+  listRecentlyClosedTrackedPullRequests: (input: { userId: string; since: Date }) =>
+    listRecentlyClosedTrackedPullRequests(input),
   closeTrackedPullRequest: (input: unknown) => closeTrackedPullRequest(input),
 }));
 
@@ -62,6 +65,7 @@ beforeEach(() => {
   listCommitments.mockResolvedValue([]);
   upsertTrackedPullRequest.mockResolvedValue({});
   listOpenTrackedPullRequests.mockResolvedValue([]);
+  listRecentlyClosedTrackedPullRequests.mockResolvedValue([]);
   closeTrackedPullRequest.mockResolvedValue({});
 });
 
@@ -76,7 +80,7 @@ describe("syncGithub", () => {
     const { syncGithub } = await import("../sync");
     const result = await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
 
-    expect(result).toEqual({ created: 1, closed: 0, openPRsWithoutReviewer: [] });
+    expect(result).toEqual({ created: 1, closed: 0, openPRsWithoutReviewer: [], recentlyClosedPullRequests: [] });
     expect(ensureSelfPerson).toHaveBeenCalledWith({
       userId: "u1",
       displayName: "Pranav Kavle",
@@ -107,7 +111,7 @@ describe("syncGithub", () => {
     const { syncGithub } = await import("../sync");
     const result = await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
 
-    expect(result).toEqual({ created: 0, closed: 0, openPRsWithoutReviewer: [] });
+    expect(result).toEqual({ created: 0, closed: 0, openPRsWithoutReviewer: [], recentlyClosedPullRequests: [] });
     expect(createArtifact).not.toHaveBeenCalled();
     expect(createCommitment).not.toHaveBeenCalled();
   });
@@ -129,7 +133,7 @@ describe("syncGithub", () => {
     const now = new Date("2026-08-14T00:00:00Z");
     const result = await syncGithub({ userId: "u1", token: "gho_test", now });
 
-    expect(result).toEqual({ created: 0, closed: 1, openPRsWithoutReviewer: [] });
+    expect(result).toEqual({ created: 0, closed: 1, openPRsWithoutReviewer: [], recentlyClosedPullRequests: [] });
     expect(closeCommitment).toHaveBeenCalledWith({
       id: "commitment-stale",
       userId: "u1",
@@ -155,7 +159,7 @@ describe("syncGithub", () => {
     const { syncGithub } = await import("../sync");
     const result = await syncGithub({ userId: "u1", token: "gho_test", now: new Date() });
 
-    expect(result).toEqual({ created: 0, closed: 0, openPRsWithoutReviewer: [] });
+    expect(result).toEqual({ created: 0, closed: 0, openPRsWithoutReviewer: [], recentlyClosedPullRequests: [] });
     expect(closeCommitment).not.toHaveBeenCalled();
   });
 
@@ -172,6 +176,7 @@ describe("syncGithub", () => {
           createdAt: "2026-08-13T00:00:00Z",
         },
       ],
+      recentlyClosedPullRequests: [],
     });
     findArtifactBySourceExternalId.mockResolvedValue(null);
     createArtifact.mockResolvedValue({ id: "artifact-3" });
@@ -198,6 +203,7 @@ describe("syncGithub", () => {
           createdAt: "2026-08-13T00:00:00Z",
         },
       ],
+      recentlyClosedPullRequests: [],
     });
   });
 

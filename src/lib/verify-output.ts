@@ -102,12 +102,19 @@ export function verifySpokenText(input: {
   // rather than figures — so they do not get double-counted as numerals.
   const spoken = withoutIdentifiers(input.text).replace(ISO_DATE, " ");
 
-  const sourced = new Set(
-    input.evidence.flatMap((source) => withoutIdentifiers(source).match(NUMERAL) ?? []),
-  );
+  // Compared by value, and read off both sides in both notations.
+  //
+  // This used to compare digit strings to digit strings, which quietly meant
+  // the user's own words could not back the agent's own number. Asked to merge
+  // "PR ninety one", the model wrote "91" — and 91 as digits appeared in
+  // nothing, so every sentence about it was withheld and the user heard a
+  // canned apology instead of an answer. The rule was never "the model must
+  // echo the notation the evidence happened to use"; it is that a figure has to
+  // trace to something. Ninety-one traces to ninety-one.
+  const sourced = numberValuesIn(input.evidence.join(" "));
 
   for (const numeral of matches(spoken, NUMERAL)) {
-    if (sourced.has(numeral)) continue;
+    if (sourced.has(Number(numeral))) continue;
     violations.push({
       kind: "unsourced_number",
       severity: "withheld",
@@ -119,9 +126,8 @@ export function verifySpokenText(input: {
   // numbers as words, so the fabrication most likely to reach a speaker is
   // "three promises", not "3 promises". Compared by value, so "the fourteenth"
   // is backed by a `dueAt` of 2026-08-14.
-  const sourcedValues = new Set([...sourced].map(Number));
-  for (const word of spokenNumberWords(spoken)) {
-    if (sourcedValues.has(WORD_VALUES.get(word) as number)) continue;
+  for (const { word, value } of spokenNumbers(spoken)) {
+    if (sourced.has(value)) continue;
     violations.push({
       kind: "unsourced_spoken_number",
       severity: "flagged",
@@ -132,7 +138,41 @@ export function verifySpokenText(input: {
   return violations;
 }
 
-function spokenNumberWords(text: string): string[] {
+// Every figure a piece of text can be said to contain, as values — digits and
+// spoken words alike, so the two notations can back each other.
+function numberValuesIn(text: string): Set<number> {
+  const clean = withoutIdentifiers(text);
+  const values = new Set<number>((clean.match(NUMERAL) ?? []).map(Number));
+  for (const { value } of spokenNumbers(clean)) values.add(value);
+  return values;
+}
+
+// A tens word directly followed by a units word is one number: "ninety one"
+// and "ninety-one" are both 91, and neither is a 90 next to a 1. Read greedily
+// for exactly that reason — emitting the parts as well as the compound made
+// "PR ninety-one" report a 90 and a 1 that no evidence would ever carry, which
+// is the noise this check is supposed to be free of. Anything longer than a
+// tens-units pair stays out of scope, the same way WORD_VALUES stops short of
+// a general parser.
+function spokenNumbers(text: string): Array<{ word: string; value: number }> {
   const words = text.toLowerCase().match(/[a-z]+/g) ?? [];
-  return [...new Set(words.filter((word) => WORD_VALUES.has(word)))];
+  const found = new Map<string, number>();
+
+  for (let index = 0; index < words.length; index++) {
+    const word = words[index];
+    const value = WORD_VALUES.get(word);
+    if (value === undefined) continue;
+
+    const next = words[index + 1];
+    const nextValue = next === undefined ? undefined : WORD_VALUES.get(next);
+    if (value >= 20 && value % 10 === 0 && nextValue !== undefined && nextValue >= 1 && nextValue <= 9) {
+      found.set(`${word} ${next}`, value + nextValue);
+      index++;
+      continue;
+    }
+
+    found.set(word, value);
+  }
+
+  return [...found].map(([word, value]) => ({ word, value }));
 }

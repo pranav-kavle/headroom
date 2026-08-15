@@ -8,6 +8,7 @@ import {
   findCommitmentBySourceArtifact,
   listCommitments,
   listOpenTrackedPullRequests,
+  listRecentlyClosedTrackedPullRequests,
   resolvePerson,
   upsertTrackedPullRequest,
 } from "@headroom/graph";
@@ -28,7 +29,23 @@ export interface GithubSyncSummary {
     url: string;
     createdAt: string;
   }>;
+  // PRs that recently stopped being open — including any the agent merged or
+  // closed itself. An open-only report made an actioned PR vanish, so the turn
+  // after a merge the agent found nothing and walked back a merge that had
+  // succeeded.
+  recentlyClosedPullRequests: Array<{
+    artifactId: string;
+    number: number;
+    title: string;
+    url: string | null;
+    state: "merged" | "closed";
+    closedAt: string;
+  }>;
 }
+
+// Long enough to cover a conversation about what just happened, short enough
+// that "what did I merge" doesn't turn into a changelog.
+const RECENTLY_CLOSED_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const OPEN_STATUSES = ["open", "at_risk", "overdue"];
 
@@ -203,6 +220,13 @@ export async function syncGithub(input: {
       }
     }
 
+    // Read after the close pass above, so a PR this very sync retired is in it
+    // — and so is one the agent merged a minute ago through merge_pr.
+    const recentlyClosed = await listRecentlyClosedTrackedPullRequests({
+      userId: input.userId,
+      since: new Date(input.now.getTime() - RECENTLY_CLOSED_WINDOW_MS),
+    });
+
     return {
       created,
       closed,
@@ -212,6 +236,14 @@ export async function syncGithub(input: {
         title,
         url,
         createdAt,
+      })),
+      recentlyClosedPullRequests: recentlyClosed.map((tracked) => ({
+        artifactId: tracked.artifactId,
+        number: tracked.number,
+        title: tracked.artifact.excerpt,
+        url: tracked.artifact.url,
+        state: tracked.state as "merged" | "closed",
+        closedAt: (tracked.closedAt as Date).toISOString(),
       })),
     };
   });

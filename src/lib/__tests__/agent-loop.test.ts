@@ -544,6 +544,36 @@ describe("Tier 2 approval", () => {
     expect(result.executed).toEqual([]);
   });
 
+  // The double send. A duplicate request left an unconsumed offer behind, the
+  // user's next words matched it, and the handler ran a second time — while the
+  // model, never told the first send had worked, apologised for a failure that
+  // had not happened. A completed call is answered as completed, and the
+  // handler is not reached at all.
+  it("does not run a handler for a call that already completed", async () => {
+    const result = await runAgentTurn({
+      messages: [{ role: "user", content: "alright, thank you" }],
+      principal: PRINCIPAL,
+      context: {
+        ...CONTEXT,
+        findCompletedAction: async () => ({
+          ranAt: "2026-08-15T09:30:00.000Z",
+          externalRef: "https://slack.com/archives/C1/p1",
+        }),
+        // Would approve if it were ever asked — the completion check runs
+        // first, so it isn't.
+        resolveApproval: async () => ({ approved: true, actionId: "action-1" }),
+      },
+      client: creator(toolReply("comment_on_pr", { body: "demo successful" }), textReply("Already done.")),
+      tools: [tier2Tool],
+    });
+
+    expect(posted).toEqual([]);
+    expect(result.executed).toEqual([]);
+    // Not blocked either: nothing was refused, and reporting it as a refusal is
+    // what made the agent apologise for a send that had succeeded.
+    expect(result.blocked).toEqual([]);
+  });
+
   it("runs the handler once the same call comes back approved", async () => {
     const result = await runAgentTurn({
       messages: [{ role: "user", content: "yeah, go for it" }],

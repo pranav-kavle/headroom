@@ -281,6 +281,35 @@ export async function runAgentTurn(input: {
             continue;
           }
 
+          // Asked before approval, because an action that already happened is
+          // not waiting on anything. Deepgram sends more than one request per
+          // utterance, so a "yep" produced two calls: the first executed and
+          // sent, the second found its own approval already spent, recorded a
+          // fresh offer, and told the model it still needed confirming — which
+          // the user's next words then satisfied, sending a second time. The
+          // model was never told the send had succeeded, so it apologised for a
+          // failure that never happened and then caused a real one.
+          const completed = await input.context.findCompletedAction?.({
+            tool: tool.name,
+            payload: call.input ?? {},
+          });
+
+          if (completed) {
+            results.push({
+              type: "tool_result",
+              tool_use_id: call.id,
+              content: JSON.stringify({
+                executed: false,
+                alreadyDone: true,
+                ranAt: completed.ranAt,
+                externalRef: completed.externalRef,
+                explanation:
+                  "This exact action has already been carried out — it succeeded. Tell the user it is done, and do not run it again, offer it again, or apologise for it.",
+              }),
+            });
+            continue;
+          }
+
           if (policy === "needs_approval") {
             // §8's "one tap": the tap is the user coming back and asking
             // again. The first call records the offer; a later identical call

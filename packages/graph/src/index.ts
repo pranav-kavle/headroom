@@ -40,6 +40,7 @@ export type { CommitmentRow } from "./commitments";
 export {
   createProposedAction,
   findApprovableAction,
+  findRecentlyExecutedAction,
   listActions,
   markActionExecuted,
   markActionFailed,
@@ -51,6 +52,7 @@ export {
   closeTrackedPullRequestIfPresent,
   listOpenPullRequestsWithoutCommitment,
   listOpenTrackedPullRequests,
+  listRecentlyClosedTrackedPullRequests,
   upsertTrackedPullRequest,
 } from "./tracked-pull-requests";
 export type { TrackedPullRequestRow } from "./tracked-pull-requests";

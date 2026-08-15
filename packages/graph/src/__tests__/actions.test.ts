@@ -3,6 +3,7 @@ import {
   createProposedAction,
   createUser,
   findApprovableAction,
+  findRecentlyExecutedAction,
   listActions,
   markActionExecuted,
   markActionFailed,
@@ -320,6 +321,125 @@ describe("findApprovableAction", () => {
 
         utterance: CONFIRMED,
       proposedAfter: WINDOW_START,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("findRecentlyExecutedAction", () => {
+  const PAYLOAD = { channel: "C1", text: "We need to ramp up efficiency." };
+
+  // The double send. Two requests for one "yep" each recorded a proposal; the
+  // first executed and sent, the second left an offer nobody asked for, and the
+  // user's next words matched it — so the message went out twice.
+  it("reports a send that already happened", async () => {
+    const user = await makeUser("done");
+    const run = await makeRun(user.id, "turn-1");
+    const action = await createProposedAction({
+      userId: user.id,
+      agentRunId: run.id,
+      tier: "tier_2",
+      kind: "send_slack_message",
+      payload: PAYLOAD,
+    });
+    await markActionExecuted({ id: action.id, externalRef: "https://slack.com/p1", at: AT });
+
+    const done = await findRecentlyExecutedAction({
+      userId: user.id,
+      kind: "send_slack_message",
+      payload: PAYLOAD,
+      executedAfter: WINDOW_START,
+    });
+
+    expect(done?.externalRef).toBe("https://slack.com/p1");
+  });
+
+  it("does not report an offer that never ran", async () => {
+    const user = await makeUser("notdone");
+    const run = await makeRun(user.id, "turn-1");
+    await createProposedAction({
+      userId: user.id,
+      agentRunId: run.id,
+      tier: "tier_2",
+      kind: "send_slack_message",
+      payload: PAYLOAD,
+    });
+
+    expect(
+      await findRecentlyExecutedAction({
+        userId: user.id,
+        kind: "send_slack_message",
+        payload: PAYLOAD,
+        executedAfter: WINDOW_START,
+      }),
+    ).toBeNull();
+  });
+
+  // Different words are a different message, and must send.
+  it("does not report a different payload as done", async () => {
+    const user = await makeUser("donepayload");
+    const run = await makeRun(user.id, "turn-1");
+    const action = await createProposedAction({
+      userId: user.id,
+      agentRunId: run.id,
+      tier: "tier_2",
+      kind: "send_slack_message",
+      payload: PAYLOAD,
+    });
+    await markActionExecuted({ id: action.id, at: AT });
+
+    expect(
+      await findRecentlyExecutedAction({
+        userId: user.id,
+        kind: "send_slack_message",
+        payload: { ...PAYLOAD, text: "Something else." },
+        executedAfter: WINDOW_START,
+      }),
+    ).toBeNull();
+  });
+
+  // Past the window, asking again is a new request rather than a repeat.
+  it("does not report a send from outside the window", async () => {
+    const user = await makeUser("doneold");
+    const run = await makeRun(user.id, "turn-1");
+    const action = await createProposedAction({
+      userId: user.id,
+      agentRunId: run.id,
+      tier: "tier_2",
+      kind: "send_slack_message",
+      payload: PAYLOAD,
+    });
+    await markActionExecuted({ id: action.id, at: AT });
+
+    expect(
+      await findRecentlyExecutedAction({
+        userId: user.id,
+        kind: "send_slack_message",
+        payload: PAYLOAD,
+        executedAfter: new Date(AT.getTime() + 60_000),
+      }),
+    ).toBeNull();
+  });
+
+  it("does not reach another user's completed actions", async () => {
+    const user = await makeUser("doneowner");
+    const intruder = await makeUser("doneintruder");
+    const run = await makeRun(user.id, "turn-1");
+    const action = await createProposedAction({
+      userId: user.id,
+      agentRunId: run.id,
+      tier: "tier_2",
+      kind: "send_slack_message",
+      payload: PAYLOAD,
+    });
+    await markActionExecuted({ id: action.id, at: AT });
+
+    expect(
+      await findRecentlyExecutedAction({
+        userId: intruder.id,
+        kind: "send_slack_message",
+        payload: PAYLOAD,
+        executedAfter: WINDOW_START,
       }),
     ).toBeNull();
   });

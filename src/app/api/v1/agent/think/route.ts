@@ -5,6 +5,7 @@ import {
   closeTrackedPullRequestIfPresent,
   createProposedAction,
   findApprovableAction,
+  findRecentlyExecutedAction,
   findArtifactById,
   finishAgentRun,
   listCommitments,
@@ -178,6 +179,18 @@ export async function POST(request: NextRequest) {
             return { approved: false };
           }
         : undefined,
+      // Scoped to the same window as an approval: beyond it, asking again is a
+      // new request rather than a repeat of the old one.
+      findCompletedAction: async ({ tool, payload }) => {
+        const done = await findRecentlyExecutedAction({
+          userId,
+          kind: tool,
+          payload,
+          executedAfter: new Date(now.getTime() - APPROVAL_WINDOW_MS),
+        });
+        if (!done?.executedAt) return null;
+        return { ranAt: done.executedAt.toISOString(), externalRef: done.externalRef ?? undefined };
+      },
       recordActionExecuted: async (actionId, output) => {
         await markActionExecuted({ id: actionId, externalRef: externalRefOf(output), at: new Date() });
       },
