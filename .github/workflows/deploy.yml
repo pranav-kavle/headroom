@@ -56,4 +56,6 @@ jobs:
               ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}" \
               AGENT_THINK_SECRET="${{ secrets.AGENT_THINK_SECRET }}" \
               TICKETMASTER_API_KEY="${{ secrets.TICKETMASTER_API_KEY }}" \
-              RAPIDAPI_KEY="${{ secrets.RAPIDAPI_KEY }}"
+              RAPIDAPI_KEY="${{ secrets.RAPIDAPI_KEY }}" \
+              GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
+              GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
