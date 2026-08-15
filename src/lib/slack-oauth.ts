@@ -11,6 +11,10 @@ export const SLACK_USER_SCOPES = [
   "im:history",
   "mpim:history",
   "users:read",
+  // team.info, which the sync calls once per run to resolve the workspace
+  // subdomain for message permalinks. Without it every sync dies on
+  // missing_scope before writing a single artifact.
+  "team:read",
   "chat:write",
 ];
 

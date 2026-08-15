@@ -54,6 +54,13 @@ describe("buildSlackAuthorizeUrl", () => {
     expect(SLACK_USER_SCOPES).toContain("im:history");
   });
 
+  it("includes team:read, which permalink construction depends on", () => {
+    // syncSlack calls team.info once per run to resolve the workspace
+    // subdomain. Omitting this scope fails the whole sync on missing_scope
+    // rather than merely degrading the links.
+    expect(SLACK_USER_SCOPES).toContain("team:read");
+  });
+
   it("carries the redirect uri and CSRF state", () => {
     expect(url.searchParams.get("redirect_uri")).toBe(
       "https://headroom.example.com/api/v1/integrations/slack/callback",

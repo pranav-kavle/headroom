@@ -47,6 +47,7 @@ are made. User scopes requested:
 | `im:history` | DMs — the highest-value source |
 | `mpim:history` | group DMs |
 | `users:read` | resolve author IDs to real names |
+| `team:read` | `team.info`, for the workspace subdomain permalinks need |
 | `chat:write` | the Tier 2 send action |
 
 Slack user tokens do not expire unless token rotation is explicitly
