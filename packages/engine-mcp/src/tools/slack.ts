@@ -115,7 +115,7 @@ export const slackTools: EngineTool[] = [
     // text are fixed here at approval time — the tap approves this exact
     // payload, never a template filled in afterwards (spec §5).
     description:
-      "Send a Slack message to a channel or direct message. The channel must be an id from list_slack_channels — never one you have inferred. This needs the user's approval before it runs: offer it, and do not claim it is sent.",
+      "Send a Slack message to a channel or direct message. The channel must be an id from list_slack_channels — never one you have inferred. It needs the user's approval, and calling it is how you ask: the first call comes back needing approval — offer it then, reading back the channel and the exact text, and do not claim it is sent. When they confirm, call again with identical arguments and it sends.",
     inputSchema: {
       type: "object",
       properties: {

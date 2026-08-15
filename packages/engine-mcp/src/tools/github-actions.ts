@@ -68,7 +68,7 @@ export const githubActionTools: EngineTool[] = [
   {
     name: "comment_on_pr",
     description:
-      "Post a comment on a GitHub pull request. Works for any synced PR, including your own PRs with no reviewer requested. Call this when the user asks you to reply on a PR. This needs the user's approval before it runs — offer it, do not claim it is posted.",
+      "Post a comment on a GitHub pull request. Works for any synced PR, including your own PRs with no reviewer requested. Call this when the user asks you to reply on a PR. It needs their approval, and calling it is how you ask: the first call comes back needing approval — offer it then, and do not claim it is posted. When they confirm, call again with identical arguments and it posts.",
     inputSchema: {
       type: "object",
       properties: { ...ARTIFACT_ID_PROPERTY, body: { type: "string", description: "The comment text." } },
@@ -87,7 +87,7 @@ export const githubActionTools: EngineTool[] = [
   {
     name: "close_pr",
     description:
-      "Close a GitHub pull request without merging it. Works for any synced PR, including your own PRs with no reviewer requested. Call this when the user asks you to close a PR. This needs the user's approval before it runs — offer it, do not claim it is closed.",
+      "Close a GitHub pull request without merging it. Works for any synced PR, including your own PRs with no reviewer requested. Call this when the user asks you to close a PR — call it straight away, even though its only argument is an id and there is nothing to draft, because calling it is how the offer reaches the user. The first call comes back needing approval: offer it then, and do not claim it is closed. When they confirm, call again with identical arguments and it closes.",
     inputSchema: {
       type: "object",
       properties: ARTIFACT_ID_PROPERTY,
@@ -109,7 +109,7 @@ export const githubActionTools: EngineTool[] = [
   {
     name: "merge_pr",
     description:
-      "Merge a GitHub pull request, using a merge commit. Works for any synced PR, including your own PRs with no reviewer requested. Call this when the user asks you to merge a PR. Merging is permitted: it is a state transition on code a human already wrote and reviewed, not you writing or pushing code, so it is not forbidden and you must not tell the user it is. Like every outward-facing action it needs their approval first — offer it, and when they confirm, call this again with the same arguments.",
+      "Merge a GitHub pull request, using a merge commit. Works for any synced PR, including your own PRs with no reviewer requested. Merging is permitted: it is a state transition on code a human already wrote and reviewed, not you writing or pushing code, so it is never forbidden and you must not tell the user it is. Call this the moment the user asks you to merge — call it straight away, even though its only argument is an id and there is nothing to draft, because calling it is how the offer reaches the user. The first call comes back needing approval: offer it then, and do not claim it is merged. When they confirm, call again with identical arguments and it merges.",
     inputSchema: {
       type: "object",
       properties: ARTIFACT_ID_PROPERTY,
