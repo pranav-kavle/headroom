@@ -12,12 +12,24 @@ export interface GithubCandidate {
   counterpartyLogin: string;
 }
 
+export interface GithubBarePR {
+  nodeId: string;
+  number: number;
+  title: string;
+  url: string;
+  createdAt: string;
+}
+
 export interface GithubSyncCandidates {
   viewerLogin: string;
   viewerName: string | null;
   reviewRequested: GithubCandidate[];
   assignedIssues: GithubCandidate[];
   authoredOpenPRs: GithubCandidate[];
+  // Authored open PRs with no User reviewer requested (none at all, or only
+  // a Team) — not a Commitment candidate, since there's no one to name as
+  // counterparty, but still a fact worth surfacing.
+  authoredOpenPRsWithoutReviewer: GithubBarePR[];
 }
 
 const SYNC_QUERY = `
@@ -57,6 +69,16 @@ function candidateFromAuthored(node: RawNode): GithubCandidate | null {
   };
 }
 
+function barePRFromAuthored(node: RawNode): GithubBarePR {
+  return {
+    nodeId: node.id as string,
+    number: node.number as number,
+    title: node.title as string,
+    url: node.url as string,
+    createdAt: node.createdAt as string,
+  };
+}
+
 function candidateFromAuthored_or_assigned(node: RawNode): GithubCandidate {
   return {
     nodeId: node.id as string,
@@ -80,10 +102,16 @@ export function parseGithubSyncCandidates(json: unknown): GithubSyncCandidates {
     .map(candidateFromAuthored_or_assigned)
     .filter((c) => c.counterpartyLogin !== viewer.login);
 
-  const authoredOpenPRs = ((data.authoredOpenPRs as { nodes: RawNode[] }).nodes ?? [])
+  const authoredNodes = (data.authoredOpenPRs as { nodes: RawNode[] }).nodes ?? [];
+
+  const authoredOpenPRs = authoredNodes
     .map(candidateFromAuthored)
     .filter((c): c is GithubCandidate => c !== null)
     .filter((c) => c.counterpartyLogin !== viewer.login);
+
+  const authoredOpenPRsWithoutReviewer = authoredNodes
+    .filter((node) => candidateFromAuthored(node) === null)
+    .map(barePRFromAuthored);
 
   return {
     viewerLogin: viewer.login,
@@ -91,6 +119,7 @@ export function parseGithubSyncCandidates(json: unknown): GithubSyncCandidates {
     reviewRequested: reviewRequestedNodes,
     assignedIssues: assignedIssueNodes,
     authoredOpenPRs,
+    authoredOpenPRsWithoutReviewer,
   };
 }
 
