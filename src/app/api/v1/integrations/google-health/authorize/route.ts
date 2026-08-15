@@ -6,16 +6,18 @@ import {
   resolveGoogleClientCredentials,
 } from "@/lib/google-health-oauth";
 import { getOrCreateUser } from "@/lib/auth";
+import { resolveRequestOrigin } from "@/lib/request-origin";
 
 export async function GET(request: NextRequest) {
   const user = await getOrCreateUser();
+  const origin = resolveRequestOrigin(request);
   if (!user) {
-    return NextResponse.redirect(new URL("/sign-in", request.url));
+    return NextResponse.redirect(new URL("/sign-in", origin));
   }
 
   const { clientId } = resolveGoogleClientCredentials();
   const state = randomBytes(16).toString("hex");
-  const redirectUri = new URL("/api/v1/integrations/google-health/callback", request.url).toString();
+  const redirectUri = new URL("/api/v1/integrations/google-health/callback", origin).toString();
   const authorizeUrl = buildGoogleHealthAuthorizeUrl({ clientId, redirectUri, state });
 
   const response = NextResponse.redirect(authorizeUrl);

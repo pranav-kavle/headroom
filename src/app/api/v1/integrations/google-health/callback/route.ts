@@ -6,14 +6,16 @@ import {
 } from "@/lib/google-health-oauth";
 import { saveGoogleHealthToken } from "@/lib/google-health-token";
 import { getOrCreateUser } from "@/lib/auth";
+import { resolveRequestOrigin } from "@/lib/request-origin";
 
 export async function GET(request: NextRequest) {
   const user = await getOrCreateUser();
+  const origin = resolveRequestOrigin(request);
   if (!user) {
-    return NextResponse.redirect(new URL("/sign-in", request.url));
+    return NextResponse.redirect(new URL("/sign-in", origin));
   }
 
-  const response = NextResponse.redirect(new URL("/controls", request.url));
+  const response = NextResponse.redirect(new URL("/controls", origin));
   response.cookies.delete(GOOGLE_HEALTH_STATE_COOKIE);
 
   const code = request.nextUrl.searchParams.get("code");
@@ -27,7 +29,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const { clientId, clientSecret } = resolveGoogleClientCredentials();
-    const redirectUri = new URL("/api/v1/integrations/google-health/callback", request.url).toString();
+    const redirectUri = new URL("/api/v1/integrations/google-health/callback", origin).toString();
     const token = await exchangeGoogleHealthCode({ code, clientId, clientSecret, redirectUri, now: new Date() });
 
     if (!token.refreshToken) {
