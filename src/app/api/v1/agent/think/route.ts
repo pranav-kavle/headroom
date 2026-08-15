@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { listCommitments } from "@headroom/graph";
+import { getCommitmentById, listCommitments } from "@headroom/graph";
 import { verifyThinkToken, type ThinkTokenClaims } from "@/lib/agent-think-auth";
 import { resolveAnthropicApiKey } from "@/lib/agent";
 import { runAgentTurn, type MessageCreator } from "@/lib/agent-loop";
+import { getGithubAccessToken } from "@/lib/github-token";
 import { recordTurn } from "@/lib/agent-turns";
 import { captureUtterance } from "@/lib/capture";
 import {
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
   }
-  const { userId, ...principal } = claims;
+  const { userId, clerkUserId, ...principal } = claims;
 
   const body = (await request.json()) as ChatCompletionRequest;
   const model = body.model ?? "headroom-agent";
@@ -66,6 +67,19 @@ export async function POST(request: NextRequest) {
   // storing it would attribute Otto's words to the user.
   const captured = captureUtterance({ userId, transcript, occurredAt: now });
 
+  // The GitHub write tools (comment_on_pr/close_pr/merge_pr) need a live
+  // token per turn. Resolved here, not inside the engine, per port rule 6 —
+  // a failed Clerk lookup should not fail the whole turn, so the tools just
+  // see no token and refuse with "GitHub is not connected" instead.
+  let githubToken: string | undefined;
+  if (clerkUserId) {
+    try {
+      githubToken = (await getGithubAccessToken(clerkUserId)) ?? undefined;
+    } catch (error) {
+      console.warn("[think] GitHub token lookup failed", error);
+    }
+  }
+
   const result = await runAgentTurn({
     // Spec §5: the whole conversation, not just the latest line.
     messages: toTurnMessages(body),
@@ -80,11 +94,13 @@ export async function POST(request: NextRequest) {
       // user's own.
       timezone: principal.timezone ?? undefined,
       listCommitments: (id) => listCommitments(id),
+      getCommitmentById: (id) => getCommitmentById(id, userId),
       // §16's live lookups (get_weather/get_events/get_flight_status). If
       // unset, the tool itself throws a named "key not configured" error
       // rather than this route failing the whole turn up front.
       ticketmasterApiKey: process.env.TICKETMASTER_API_KEY,
       rapidApiKey: process.env.RAPIDAPI_KEY,
+      githubToken,
     },
   });
 

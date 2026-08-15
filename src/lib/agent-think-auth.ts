@@ -33,6 +33,10 @@ function signaturesMatch(a: string, b: string): boolean {
 // trip against a 1.5-3s first-audio budget.
 export interface ThinkTokenClaims {
   userId: string;
+  // The Clerk user id, kept separate from the display-facing principal below
+  // — this is identity plumbing for resolving the GitHub token per turn, not
+  // something spoken or logged as part of who the user is.
+  clerkUserId: string | null;
   displayName: string | null;
   role: string | null;
   timezone: string | null;
@@ -44,7 +48,8 @@ export function signThinkToken(
     now?: Date;
     ttlSeconds?: number;
     env?: EnvSource;
-    principal?: Omit<ThinkTokenClaims, "userId">;
+    clerkUserId?: string | null;
+    principal?: Omit<ThinkTokenClaims, "userId" | "clerkUserId">;
   } = {},
 ): string {
   const env = options.env ?? process.env;
@@ -54,6 +59,7 @@ export function signThinkToken(
   const payload = Buffer.from(
     JSON.stringify({
       userId,
+      clerkUserId: options.clerkUserId ?? null,
       expiresAt,
       displayName: options.principal?.displayName ?? null,
       role: options.principal?.role ?? null,
@@ -81,12 +87,13 @@ export function verifyThinkToken(
     throw new Error("Invalid think token signature");
   }
 
-  // The three principal fields are optional on the way in, so a token minted
-  // before this deploy still verifies — it just yields a nameless principal
-  // rather than forcing every open session to re-auth.
+  // The principal fields are optional on the way in, so a token minted before
+  // this deploy still verifies — it just yields a nameless principal and no
+  // Clerk id, rather than forcing every open session to re-auth.
   const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
     userId: string;
     expiresAt: number;
+    clerkUserId?: string | null;
     displayName?: string | null;
     role?: string | null;
     timezone?: string | null;
@@ -98,6 +105,7 @@ export function verifyThinkToken(
 
   return {
     userId: claims.userId,
+    clerkUserId: claims.clerkUserId ?? null,
     displayName: claims.displayName ?? null,
     role: claims.role ?? null,
     timezone: claims.timezone ?? null,

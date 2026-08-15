@@ -15,6 +15,7 @@ const completeOnboarding = vi.fn();
 const listUsers = vi.fn();
 const pingDatabase = vi.fn();
 const listCommitments = vi.fn();
+const getCommitmentById = vi.fn();
 const createArtifact = vi.fn();
 const mintDeepgramAgentToken = vi.fn();
 const signThinkToken = vi.fn();
@@ -28,6 +29,7 @@ vi.mock("@headroom/graph", () => ({
   listUsers: () => listUsers(),
   pingDatabase: () => pingDatabase(),
   listCommitments: (userId: string) => listCommitments(userId),
+  getCommitmentById: (id: string, userId: string) => getCommitmentById(id, userId),
   createArtifact: (input: unknown) => createArtifact(input),
   completeOnboarding: (userId: string, input: unknown) => completeOnboarding(userId, input),
 }));
@@ -60,6 +62,7 @@ const USER_ROW = {
 // the user id, so the think endpoint never reads the database for it.
 const CLAIMS = {
   userId: USER_ROW.id,
+  clerkUserId: USER_ROW.clerkUserId,
   displayName: "Priya Raman",
   role: "product counsel",
   timezone: "America/Chicago",
@@ -272,6 +275,7 @@ describe("POST /api/v1/voice/agent-token", () => {
     // User row is already in hand, so the think endpoint never reads the
     // database on the voice hot path.
     expect(signThinkToken).toHaveBeenCalledWith(USER_ROW.id, {
+      clerkUserId: USER_ROW.clerkUserId,
       principal: {
         displayName: "Priya Raman",
         role: "product counsel",
@@ -435,6 +439,55 @@ describe("POST /api/v1/agent/think", () => {
         context: expect.objectContaining({ timezone: "America/Chicago" }),
       }),
     );
+  });
+
+  // The GitHub write tools (comment_on_pr/close_pr/merge_pr) need a live token
+  // per turn — Clerk holds it, keyed by the Clerk user id the think token now
+  // carries, never the internal one.
+  it("resolves a GitHub token from the claims' clerkUserId and hands it to the engine", async () => {
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    getGithubAccessToken.mockResolvedValue("gho_live");
+    runAgentTurn.mockResolvedValue(turnResult());
+    const { POST } = await import("../agent/think/route");
+
+    await POST(makeThinkRequest([{ role: "user", content: "what day is it?" }], "valid"));
+
+    expect(getGithubAccessToken).toHaveBeenCalledWith(USER_ROW.clerkUserId);
+    expect(runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({ githubToken: "gho_live" }),
+      }),
+    );
+  });
+
+  it("leaves githubToken unset when GitHub is not connected", async () => {
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    getGithubAccessToken.mockResolvedValue(null);
+    runAgentTurn.mockResolvedValue(turnResult());
+    const { POST } = await import("../agent/think/route");
+
+    await POST(makeThinkRequest([{ role: "user", content: "what day is it?" }], "valid"));
+
+    expect(runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({ githubToken: undefined }),
+      }),
+    );
+  });
+
+  it("passes a getCommitmentById that delegates to the graph, scoped to this user", async () => {
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    getGithubAccessToken.mockResolvedValue(null);
+    runAgentTurn.mockResolvedValue(turnResult());
+    getCommitmentById.mockResolvedValue({ id: "c1" });
+    const { POST } = await import("../agent/think/route");
+
+    await POST(makeThinkRequest([{ role: "user", content: "what day is it?" }], "valid"));
+
+    const { context } = runAgentTurn.mock.calls[0][0] as { context: { getCommitmentById: (id: string, userId: string) => unknown } };
+    await context.getCommitmentById("c1", "ignored");
+
+    expect(getCommitmentById).toHaveBeenCalledWith("c1", USER_ROW.id);
   });
 
   // 2026-08-13 spec §2: the turn is recorded whole — what was spoken, what

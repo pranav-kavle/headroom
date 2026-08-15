@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@headroom/graph": "*",
+    "@headroom/integrations": "*",
     "@modelcontextprotocol/sdk": "^1.26.0"
   },
   "devDependencies": {
