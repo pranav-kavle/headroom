@@ -35,6 +35,19 @@ const SSE_HEADERS = { "Content-Type": "text/event-stream", "Cache-Control": "no-
 // the user talked past is not still live later on.
 const APPROVAL_WINDOW_MS = 15 * 60 * 1000;
 
+// The link that makes a Ledger entry checkable rather than just a claim that
+// something ran. Each Tier 2 tool names its link differently — comment_on_pr
+// returns `commentUrl`, close/merge return `url`, send_slack_message returns
+// `permalink` — so they are read in one place instead of the Ledger silently
+// showing no evidence for whichever tool was added last.
+function externalRefOf(output: unknown): string | undefined {
+  const result = output as { commentUrl?: unknown; url?: unknown; permalink?: unknown } | null;
+  for (const candidate of [result?.commentUrl, result?.url, result?.permalink]) {
+    if (typeof candidate === "string" && candidate) return candidate;
+  }
+  return undefined;
+}
+
 // Deepgram Voice Agent's `think` step, wearing an OpenAI chat-completions mask
 // — design doc 2026-08-12-deepgram-voice-agent-design.md §2/§5. Deepgram calls
 // this directly with no browser session attached, so identity comes from the
@@ -160,14 +173,7 @@ export async function POST(request: NextRequest) {
           }
         : undefined,
       recordActionExecuted: async (actionId, output) => {
-        // The PR/comment url, when the tool returned one — it is what makes the
-        // Ledger entry checkable rather than just a claim that something ran.
-        const ref = output as { commentUrl?: string; url?: string } | null;
-        await markActionExecuted({
-          id: actionId,
-          externalRef: ref?.commentUrl ?? ref?.url,
-          at: new Date(),
-        });
+        await markActionExecuted({ id: actionId, externalRef: externalRefOf(output), at: new Date() });
       },
       recordActionFailed: (actionId) => markActionFailed(actionId).then(() => undefined),
       // §16's live lookups (get_weather/get_events/get_flight_status). If

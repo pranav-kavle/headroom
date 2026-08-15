@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EngineContext, EngineTool } from "@headroom/engine-mcp";
+import { engineTools, type EngineContext, type EngineTool } from "@headroom/engine-mcp";
 import { runAgentTurn, type MessageCreator } from "../agent-loop";
 
 const PRINCIPAL = { displayName: "Priya", role: null, timezone: "America/Chicago" };
@@ -637,6 +637,70 @@ describe("Tier 2 approval", () => {
     expect(posted).toEqual([]);
     expect(result.blocked[0].policy).toBe("forbidden");
   });
+
+  // The gate is tool-agnostic, so Slack's send rides the same path as
+  // GitHub's. Proved with the real tool rather than a stand-in, because
+  // "it should work too" is exactly the assumption worth checking.
+  it("holds and then releases the real send_slack_message tool", async () => {
+    const sends: Array<Record<string, unknown>> = [];
+    const slackSend = engineTools().find((t) => t.name === "send_slack_message");
+    if (!slackSend) throw new Error("send_slack_message is not registered");
+
+    const slackContext: EngineContext = {
+      ...CONTEXT,
+      slackCredentials: { accessToken: "xoxp-test", slackUserId: "U1" },
+      fetchImpl: (async (url: string | URL, init?: RequestInit) => {
+        // Only the send itself is recorded — the follow-up team.info lookup
+        // that builds the permalink is not the thing under test.
+        if (String(url).includes("chat.postMessage")) {
+          // Slack's Web API takes form encoding, not JSON.
+          sends.push(Object.fromEntries(new URLSearchParams(String(init?.body ?? ""))));
+        }
+        return new Response(
+          JSON.stringify({ ok: true, ts: "1723.45", channel: "C1", team: { domain: "acme" } }),
+        );
+      }) as typeof fetch,
+    };
+
+    const held = await runAgentTurn({
+      messages: [{ role: "user", content: "tell the team it shipped" }],
+      principal: PRINCIPAL,
+      context: { ...slackContext, resolveApproval: async () => ({ approved: false }) },
+      client: creator(
+        toolReply("send_slack_message", { channel: "C1", text: "it shipped" }),
+        textReply("Want me to send that?"),
+      ),
+      tools: [slackSend],
+    });
+
+    expect(sends).toEqual([]);
+    expect(held.blocked[0]).toEqual({
+      tool: "send_slack_message",
+      tier: "tier_2",
+      policy: "needs_approval",
+    });
+
+    const released = await runAgentTurn({
+      messages: [{ role: "user", content: "yes, send it" }],
+      principal: PRINCIPAL,
+      context: {
+        ...slackContext,
+        resolveApproval: async () => ({ approved: true, actionId: "action-9" }),
+      },
+      client: creator(
+        toolReply("send_slack_message", { channel: "C1", text: "it shipped" }),
+        textReply("Sent."),
+      ),
+      tools: [slackSend],
+    });
+
+    expect(sends).toHaveLength(1);
+    expect(sends[0]).toMatchObject({ channel: "C1", text: "it shipped" });
+    expect(released.executed).toEqual([
+      { tool: "send_slack_message", tier: "tier_2", actionId: "action-9" },
+    ]);
+  });
+
 
   // Without a resolver wired in, the old behaviour must hold exactly.
   it("blocks as before when no approval path is configured", async () => {
