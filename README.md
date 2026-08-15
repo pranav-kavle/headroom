@@ -89,5 +89,22 @@ Postgres must be running for the `graph` and `engine-mcp` test projects.
 
 ## Status
 
-v0 in build: prove extraction is good enough to trust. No push, no voice, no
-actions until it is.
+v0 in build: prove extraction is good enough to trust.
+
+Shipped since that line was written — voice, and outward-facing actions:
+
+- **Voice is live.** STT → engine → TTS, per core rule 4. Each spoken reply
+  carries its citations, fetched separately from the turn record.
+- **Tier 2 executes on confirmation.** An offer is a tool call that comes back
+  needing approval; the user's "yes" produces an identical second call, and only
+  that one runs. The gate reads the tier off the tool, never off the model.
+- **Sources reading today:** GitHub, Google Calendar, Google Health, Slack.
+  Gmail is still to come, and it is where most promises actually get made.
+
+Still held back, deliberately:
+
+- **Tier 1 stays attended.** Unattended runs turn on only once extraction clears
+  ≥90% precision on `owed_by_me`, and no eval harness exists yet — so the policy
+  defaults off and Tier 1 is held for approval like Tier 2.
+- **Tier 3 and Tier 4 are forbidden outright**, not merely gated. No purchases,
+  no bookings, no pushing code.
