@@ -51,6 +51,33 @@ export function listOpenTrackedPullRequests(userId: string): Promise<TrackedPull
 }
 
 /**
+ * PRs that stopped being open recently — including ones the agent itself just
+ * merged or closed.
+ *
+ * Without this, acting on a PR made it vanish. `check_github` reported only
+ * what was still open, so the turn after a merge the agent looked, found no PR
+ * 91, and had nothing to tell it that *it* was the reason — so it corrected a
+ * merge that had actually succeeded. Worse, the number then appeared in no
+ * tool result at all, so the output verifier withheld every sentence
+ * mentioning it. An action the user watched succeed has to stay visible for
+ * long enough to talk about.
+ */
+export function listRecentlyClosedTrackedPullRequests(input: {
+  userId: string;
+  since: Date;
+}): Promise<TrackedPullRequestRow[]> {
+  return prisma.trackedPullRequest.findMany({
+    where: {
+      userId: input.userId,
+      state: { in: ["merged", "closed"] },
+      closedAt: { gte: input.since },
+    },
+    include: INCLUDE,
+    orderBy: [{ closedAt: "desc" }],
+  });
+}
+
+/**
  * The UI's list: open PRs of yours that no Commitment covers.
  *
  * The exclusion is what keeps a PR from appearing twice. A reviewer-less PR

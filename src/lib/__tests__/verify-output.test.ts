@@ -33,6 +33,57 @@ describe("verifySpokenText", () => {
     expect(violations).toEqual([]);
   });
 
+  // The false positive that silenced a demo. The user said "PR ninety one"
+  // out loud, the model wrote "91", and a digits-to-digits comparison found
+  // nothing — so every sentence mentioning the PR was replaced with the
+  // can't-back-that-up fallback. Their own words are evidence regardless of
+  // which notation each side happened to use.
+  it("accepts a numeral the user spoke as words", () => {
+    const violations = verifySpokenText({
+      text: "PR 91 is merged.",
+      evidence: ["Can you merge PR ninety one?"],
+      aboutUser: true,
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("accepts a number word the evidence carries as digits", () => {
+    const violations = verifySpokenText({
+      text: "That's PR ninety-one, merged.",
+      evidence: ['{"merged":true,"url":"https://github.com/acme/repo/pull/91"}'],
+      aboutUser: true,
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  // The compound has to survive on both sides, or "ninety one" backs 90 and 1
+  // and still not 91 — which is the same failure wearing a different hat.
+  it("reads a spoken compound as one number", () => {
+    const violations = verifySpokenText({
+      text: "Ninety-one is done.",
+      evidence: ["I merged ninety one this morning."],
+      aboutUser: true,
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  // Widening the comparison must not turn the check off: a figure that traces
+  // to nothing in either notation is still withheld.
+  it("still catches a number that appears in neither notation", () => {
+    const violations = verifySpokenText({
+      text: "PR 77 is merged.",
+      evidence: ["Can you merge PR ninety one?"],
+      aboutUser: true,
+    });
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0].kind).toBe("unsourced_number");
+    expect(violations[0].severity).toBe("withheld");
+  });
+
   // Core rule 1: the engine computes. A count the engine never produced is
   // exactly the failure the rule exists to prevent, and it is invisible in
   // logs without this.
