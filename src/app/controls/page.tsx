@@ -1,4 +1,4 @@
-import { getGoogleHealthToken, listConnectorCursors } from "@headroom/graph";
+import { getGoogleHealthToken, getSlackToken, listConnectorCursors } from "@headroom/graph";
 import { requireOnboardedUser } from "@/lib/auth";
 import { accountName } from "@/lib/assistant";
 import { AppFrame } from "@/components/nav/AppFrame";
@@ -14,7 +14,12 @@ export default async function ControlsPage() {
   // Health's token lives in our own table, not Clerk's Google connection
   // (spec §9a) — so unlike Calendar/GitHub, its connected state can't be
   // read off the client-side Clerk user object and has to come from here.
-  const googleHealthToken = await getGoogleHealthToken(user.id);
+  // Slack's token lives in our own table too (2026-08-15 spec §2) — it never
+  // touches Clerk, so its connected state comes from here as well.
+  const [googleHealthToken, slackToken] = await Promise.all([
+    getGoogleHealthToken(user.id),
+    getSlackToken(user.id),
+  ]);
 
   return (
     <AppFrame>
@@ -23,6 +28,7 @@ export default async function ControlsPage() {
         name={accountName(user.displayName, user.email)}
         sources={sources}
         googleHealthConnected={googleHealthToken !== null}
+        slackConnected={slackToken !== null}
       />
       <BottomTabBar active="controls" />
     </AppFrame>
