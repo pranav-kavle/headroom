@@ -110,7 +110,12 @@ export function ControlsView({
     const response = await fetch(path, { method: "POST" }).catch(() => null);
     setSyncingKey(null);
     if (!response?.ok) {
-      setError(key, "Sync failed. Try again?");
+      // Same reasoning as the connect path below: when the route knows why it
+      // failed, saying so beats "Try again?" — that generic string is
+      // indistinguishable across a disabled API, an expired token, and a
+      // payload shape we didn't expect.
+      const message = await response?.json().then((body) => body?.error as string | undefined).catch(() => undefined);
+      setError(key, message ?? "Sync failed. Try again?");
       return;
     }
     router.refresh();

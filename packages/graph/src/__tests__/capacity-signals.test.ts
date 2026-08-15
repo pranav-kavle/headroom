@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createArtifact, createUser, prisma, upsertCapacitySignal } from "../index";
+import {
+  createArtifact,
+  createUser,
+  listRecentCapacitySignals,
+  prisma,
+  upsertCapacitySignal,
+} from "../index";
 
 const clerkIds: string[] = [];
 
@@ -82,5 +88,86 @@ describe("upsertCapacitySignal", () => {
     expect(rows).toHaveLength(1);
     expect(resynced.value.toNumber()).toBe(56);
     expect(resynced.sourceArtifactId).toBe(artifactDay1Revised.id);
+  });
+});
+
+describe("listRecentCapacitySignals", () => {
+  async function seed(userId: string, kind: "sleep" | "rhr", day: string, value: number) {
+    const artifact = await createArtifact({
+      userId,
+      source: "google_health",
+      externalId: `${kind}:${day}`,
+      occurredAt: new Date(`${day}T00:00:00.000Z`),
+      excerpt: `${value}`,
+    });
+    return upsertCapacitySignal({
+      userId,
+      kind,
+      value,
+      unit: kind === "sleep" ? "hours" : "bpm",
+      forDate: new Date(`${day}T00:00:00.000Z`),
+      sourceArtifactId: artifact.id,
+    });
+  }
+
+  it("returns the requested kinds oldest-first, so a sparkline reads left to right", async () => {
+    const user = await makeUser("list");
+    await seed(user.id, "sleep", "2026-08-12", 7.2);
+    await seed(user.id, "sleep", "2026-08-10", 6.4);
+    await seed(user.id, "sleep", "2026-08-11", 5.6);
+
+    const rows = await listRecentCapacitySignals({
+      userId: user.id,
+      kinds: ["sleep"],
+      since: new Date("2026-08-09T00:00:00.000Z"),
+    });
+
+    expect(rows.map((r) => r.value)).toEqual([6.4, 5.6, 7.2]);
+  });
+
+  // Port rule 6 — Prisma may only be imported inside packages/graph, so a
+  // Decimal must never reach a caller. It converts here or nowhere.
+  it("hands back plain numbers, not Prisma Decimals", async () => {
+    const user = await makeUser("decimal");
+    await seed(user.id, "sleep", "2026-08-12", 7.2);
+
+    const [row] = await listRecentCapacitySignals({
+      userId: user.id,
+      kinds: ["sleep"],
+      since: new Date("2026-08-09T00:00:00.000Z"),
+    });
+
+    expect(typeof row.value).toBe("number");
+    expect(row.value).toBe(7.2);
+  });
+
+  it("excludes other kinds and anything older than the window", async () => {
+    const user = await makeUser("window");
+    await seed(user.id, "sleep", "2026-08-12", 7.2);
+    await seed(user.id, "sleep", "2026-08-01", 6.1);
+    await seed(user.id, "rhr", "2026-08-12", 58);
+
+    const rows = await listRecentCapacitySignals({
+      userId: user.id,
+      kinds: ["sleep"],
+      since: new Date("2026-08-09T00:00:00.000Z"),
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].value).toBe(7.2);
+  });
+
+  it("does not leak another user's signals", async () => {
+    const mine = await makeUser("mine");
+    const theirs = await makeUser("theirs");
+    await seed(theirs.id, "sleep", "2026-08-12", 7.2);
+
+    const rows = await listRecentCapacitySignals({
+      userId: mine.id,
+      kinds: ["sleep"],
+      since: new Date("2026-08-09T00:00:00.000Z"),
+    });
+
+    expect(rows).toEqual([]);
   });
 });

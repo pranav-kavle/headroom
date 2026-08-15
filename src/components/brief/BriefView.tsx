@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { CommitmentRow, TrackedPullRequestRow } from "@headroom/graph";
+import type { CapacityTile } from "@/lib/capacity";
+import { CapacityTiles } from "@/components/brief/CapacityTiles";
 import { isNeedsYou, isOnTrack, isWaitingOnOthers } from "@/lib/commitment-groups";
 import { STATUS_LABELS, pillTone } from "@/lib/commitment-status";
 import { formatShortDate, sourceLabel } from "@/lib/format";
@@ -17,14 +19,37 @@ const WILL_APPEAR = [
   "What you're owed, and who's gone quiet",
 ];
 
+// Say what was actually read, rather than counting zeroes. Reaching this line
+// means at least one of the three lists has something in it, so each case
+// below names the most substantial thing that landed.
+function subLine(counts: {
+  commitments: number;
+  onTrack: number;
+  waiting: number;
+  openPullRequests: number;
+}): string {
+  if (counts.commitments > 0) {
+    return `${counts.onTrack} on track. ${counts.waiting} waiting on others.`;
+  }
+  if (counts.openPullRequests > 0) {
+    const plural = counts.openPullRequests === 1 ? "" : "s";
+    return `${counts.openPullRequests} open PR${plural} of your own, owed to no one yet.`;
+  }
+  // Only capacity has synced — reporting "0 open PRs" here would be technically
+  // true and completely uninformative.
+  return "Capacity readings so far. No promises read yet.";
+}
+
 export function BriefView({
   commitments,
   openPullRequests,
+  capacityTiles,
   name,
   timeZone,
 }: {
   commitments: CommitmentRow[];
   openPullRequests: TrackedPullRequestRow[];
+  capacityTiles: CapacityTile[];
   name: string;
   timeZone: string | null;
 }) {
@@ -32,10 +57,11 @@ export function BriefView({
   // you, says plainly that it hasn't read anything, and offers the one action
   // that changes that.
   //
-  // Both lists have to be empty to count as "read nothing": your own open PRs
+  // Every list has to be empty to count as "read nothing": your own open PRs
   // are real read facts even though none of them is a commitment, and showing
-  // "I haven't read anything yet" above a PR list would be a plain lie.
-  if (commitments.length === 0 && openPullRequests.length === 0) {
+  // "I haven't read anything yet" above a PR list would be a plain lie. Synced
+  // capacity readings are read facts by the same measure, so they count too.
+  if (commitments.length === 0 && openPullRequests.length === 0 && capacityTiles.length === 0) {
     const now = new Date();
     return (
       <main className={styles.screen}>
@@ -70,12 +96,15 @@ export function BriefView({
           : `${needsYou.length} promise${needsYou.length === 1 ? "" : "s"} need${needsYou.length === 1 ? "s" : ""} you.`}
       </div>
       <div className={styles.sub}>
-        {commitments.length === 0
-          ? // No commitments at all, but we got here — so there are PRs below.
-            // Say what was actually read rather than counting zeroes.
-            `${openPullRequests.length} open PR${openPullRequests.length === 1 ? "" : "s"} of your own, owed to no one yet.`
-          : `${onTrack.length} on track. ${waiting.length} waiting on others.`}
+        {subLine({
+          commitments: commitments.length,
+          onTrack: onTrack.length,
+          waiting: waiting.length,
+          openPullRequests: openPullRequests.length,
+        })}
       </div>
+
+      <CapacityTiles tiles={capacityTiles} />
 
       {needsYou.length > 0 && (
         <div className={styles.grp}>

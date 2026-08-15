@@ -108,12 +108,6 @@ export interface EngineTool {
   aboutUser?: boolean;
 }
 
-const KNOWN_TIERS: ActionTier[] = ["tier_1", "tier_2", "tier_3", "tier_4"];
-
-function isActionTier(value: unknown): value is ActionTier {
-  return typeof value === "string" && (KNOWN_TIERS as string[]).includes(value);
-}
-
 export function engineTools(): EngineTool[] {
   return [
     {
@@ -137,23 +131,42 @@ export function engineTools(): EngineTool[] {
       // not the gate, and never was one — a verdict returned to the model is a
       // verdict the model can ignore. The gate is in the loop, keyed on the
       // tool's own declared tier, and it runs whether this is called or not.
+      //
+      // Keyed on the tool name, never on a tier the model supplies. It used to
+      // take the tier, and core rule 3 held only for execution: asked to merge
+      // a PR the model reasoned "merging is code, so Tier 4", got the right
+      // verdict for Tier 4, and told the user merging was forbidden — while
+      // merge_pr sat at Tier 2, one confirmation away from running, never
+      // called. A correct answer to a question the model should not have been
+      // able to ask.
       description:
-        "What the policy for a given tier of action is: 'allowed', 'needs_approval', or 'forbidden'. Call this before offering to do something, so that what you offer matches what is permitted. This tells you the rule; it does not grant permission, and whether any action actually runs is decided outside this conversation.",
+        "Whether a specific tool may run: 'allowed', 'needs_approval', or 'forbidden'. Call this before offering to do something, so that what you offer matches what is permitted. Pass the tool's own name — the tier is resolved here, and is never yours to decide or infer. This tells you the rule; it does not grant permission.",
       inputSchema: {
         type: "object",
         properties: {
-          tier: { type: "string", enum: KNOWN_TIERS, description: "The action's tier." },
-          kind: { type: "string", description: "The action kind, e.g. 'draft_reply'." },
+          action: {
+            type: "string",
+            description: "The name of the tool you are considering, e.g. 'merge_pr'.",
+          },
         },
-        required: ["tier"],
+        required: ["action"],
         additionalProperties: false,
       },
-      handler: async (input, context): Promise<{ policy: ActionPolicy }> => {
-        if (!isActionTier(input.tier)) {
-          throw new Error(`Unknown action tier: ${String(input.tier)}`);
+      handler: async (
+        input,
+        context,
+      ): Promise<{ action: string; tier: ActionTier | null; policy: ActionPolicy }> => {
+        const action = typeof input.action === "string" ? input.action : "";
+        const tool = engineTools().find((t) => t.name === action);
+        if (!tool) {
+          throw new Error(`Unknown action: ${action || String(input.action)}`);
+        }
+        // No declared tier means a read — nothing outward-facing to gate.
+        if (!tool.tier) {
+          return { action, tier: null, policy: "allowed" };
         }
         const options: ActionPolicyOptions = { tier1Unattended: context.tier1Unattended };
-        return { policy: getActionPolicy(input.tier, options) };
+        return { action, tier: tool.tier, policy: getActionPolicy(tool.tier, options) };
       },
     },
     {

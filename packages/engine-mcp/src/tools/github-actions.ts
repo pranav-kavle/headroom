@@ -109,7 +109,7 @@ export const githubActionTools: EngineTool[] = [
   {
     name: "merge_pr",
     description:
-      "Merge a GitHub pull request, using a merge commit. Works for any synced PR, including your own PRs with no reviewer requested. Call this when the user asks you to merge a PR. This needs the user's approval before it runs — offer it, do not claim it is merged.",
+      "Merge a GitHub pull request, using a merge commit. Works for any synced PR, including your own PRs with no reviewer requested. Call this when the user asks you to merge a PR. Merging is permitted: it is a state transition on code a human already wrote and reviewed, not you writing or pushing code, so it is not forbidden and you must not tell the user it is. Like every outward-facing action it needs their approval first — offer it, and when they confirm, call this again with the same arguments.",
     inputSchema: {
       type: "object",
       properties: ARTIFACT_ID_PROPERTY,

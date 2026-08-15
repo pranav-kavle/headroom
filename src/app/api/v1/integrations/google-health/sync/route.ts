@@ -23,6 +23,12 @@ export async function POST() {
     return NextResponse.json(GoogleHealthSyncResponse.parse(summary));
   } catch (error) {
     console.error("[integrations/google-health/sync]", error);
-    return NextResponse.json({ error: "Google Health sync failed. Try again." }, { status: 502 });
+    // Google's message is the whole diagnosis here — a disabled API, a
+    // rejected filter, and an unexpected data-point shape are all the same
+    // generic 502 otherwise, and the container's console isn't reachable
+    // from a browser. Single-operator app, and these messages carry no
+    // credentials, so they go to the client verbatim.
+    const message = error instanceof Error ? error.message : "Google Health sync failed. Try again.";
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }

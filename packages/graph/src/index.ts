@@ -19,8 +19,8 @@ export {
   listRecentArtifactsBySource,
 } from "./artifacts";
 export type { ArtifactRow, RecentArtifactRow } from "./artifacts";
-export { upsertCapacitySignal } from "./capacity-signals";
-export type { CapacitySignalRow } from "./capacity-signals";
+export { listRecentCapacitySignals, upsertCapacitySignal } from "./capacity-signals";
+export type { CapacityReadingRow, CapacitySignalRow } from "./capacity-signals";
 export { getGoogleHealthToken, upsertGoogleHealthToken } from "./google-health-token";
 export type { EncryptedTokenValue, GoogleHealthTokenRow } from "./google-health-token";
 export { getSlackToken, upsertSlackToken } from "./slack-token";
