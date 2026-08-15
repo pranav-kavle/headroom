@@ -95,6 +95,27 @@ describe("parseGithubSyncCandidates", () => {
       counterpartyLogin: "mrodriguez",
     });
   });
+
+  it("routes authored PRs with no reviewer, or only a Team reviewer, into authoredOpenPRsWithoutReviewer", () => {
+    const result = parseGithubSyncCandidates(SYNC_RESPONSE);
+
+    expect(result.authoredOpenPRsWithoutReviewer).toEqual([
+      {
+        nodeId: "PR_3",
+        number: 31,
+        title: "No reviewer requested yet",
+        url: "https://github.com/acme/repo/pull/31",
+        createdAt: "2026-08-13T00:00:00Z",
+      },
+      {
+        nodeId: "PR_4",
+        number: 32,
+        title: "Team review only",
+        url: "https://github.com/acme/repo/pull/32",
+        createdAt: "2026-08-13T00:00:00Z",
+      },
+    ]);
+  });
 });
 
 describe("fetchGithubSyncCandidates", () => {

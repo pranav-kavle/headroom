@@ -17,6 +17,7 @@ import { fetchWeather, type WeatherReport } from "./weather";
 import { fetchEvents, type EventSummary } from "./events";
 import { fetchFlightStatus, type FlightStatus } from "./flights";
 import { githubActionTools, type GithubActionCommitment } from "./github-actions";
+import { checkGithubTool } from "./github-check";
 
 // Minimal JSON Schema shape — enough to describe these tools without pulling in
 // a schema library the engine would then be coupled to.
@@ -204,6 +205,7 @@ export function engineTools(): EngineTool[] {
         });
       },
     },
+    checkGithubTool,
     ...githubActionTools,
   ];
 }

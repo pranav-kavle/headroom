@@ -104,3 +104,15 @@ export const GithubSyncResponse = z.object({
   closed: z.number(),
 });
 export type GithubSyncResponse = z.infer<typeof GithubSyncResponse>;
+
+// POST /api/v1/integrations/google-calendar/sync and .../google-health/sync
+// — both pure CapacitySignal writers, so a plain count is the whole payload.
+export const GoogleCalendarSyncResponse = z.object({
+  daysSynced: z.number(),
+});
+export type GoogleCalendarSyncResponse = z.infer<typeof GoogleCalendarSyncResponse>;
+
+export const GoogleHealthSyncResponse = z.object({
+  pointsSynced: z.number(),
+});
+export type GoogleHealthSyncResponse = z.infer<typeof GoogleHealthSyncResponse>;

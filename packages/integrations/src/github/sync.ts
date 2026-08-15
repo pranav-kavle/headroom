@@ -9,11 +9,14 @@ import {
   resolvePerson,
 } from "@headroom/graph";
 import { runIntegrationSync } from "../sync-run";
-import { fetchGithubClosedStates, fetchGithubSyncCandidates, type GithubCandidate } from "./api";
+import { fetchGithubClosedStates, fetchGithubSyncCandidates, type GithubBarePR, type GithubCandidate } from "./api";
 
 export interface GithubSyncSummary {
   created: number;
   closed: number;
+  // Your own open PRs with no reviewer requested — facts, not Commitments
+  // (there's no counterparty to name), reported fresh each sync.
+  openPRsWithoutReviewer: Array<{ number: number; title: string; url: string; createdAt: string }>;
 }
 
 const OPEN_STATUSES = ["open", "at_risk", "overdue"];
@@ -81,6 +84,24 @@ export async function syncGithub(input: {
     for (const candidate of candidates.assignedIssues) await upsertOne(candidate, "owed_by_me");
     for (const candidate of candidates.authoredOpenPRs) await upsertOne(candidate, "owed_to_me");
 
+    const upsertBarePR = async (pr: GithubBarePR) => {
+      seenExternalIds.add(pr.nodeId);
+
+      const existing = await findArtifactBySourceExternalId(input.userId, "github", pr.nodeId);
+      if (!existing) {
+        await createArtifact({
+          userId: input.userId,
+          source: "github",
+          externalId: pr.nodeId,
+          occurredAt: new Date(pr.createdAt),
+          excerpt: pr.title,
+          url: pr.url,
+        });
+      }
+    };
+
+    for (const pr of candidates.authoredOpenPRsWithoutReviewer) await upsertBarePR(pr);
+
     // Invalidation — design doc §5: any open GitHub commitment this sync
     // didn't see gets checked against GitHub's own state before closing.
     const existing = await listCommitments(input.userId);
@@ -117,6 +138,15 @@ export async function syncGithub(input: {
       }
     }
 
-    return { created, closed };
+    return {
+      created,
+      closed,
+      openPRsWithoutReviewer: candidates.authoredOpenPRsWithoutReviewer.map(({ number, title, url, createdAt }) => ({
+        number,
+        title,
+        url,
+        createdAt,
+      })),
+    };
   });
 }

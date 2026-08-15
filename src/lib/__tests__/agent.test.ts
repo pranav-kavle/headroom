@@ -28,6 +28,7 @@ describe("toAnthropicTools", () => {
     const tools = toAnthropicTools(engineTools());
 
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "check_github",
       "close_pr",
       "comment_on_pr",
       "get_action_policy",
@@ -120,6 +121,7 @@ describe("buildTurnParams", () => {
 
   it("passes the engine tools through to the model", () => {
     expect(params().tools.map((t) => t.name).sort()).toEqual([
+      "check_github",
       "close_pr",
       "comment_on_pr",
       "get_action_policy",

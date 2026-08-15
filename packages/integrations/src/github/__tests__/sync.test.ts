@@ -37,6 +37,7 @@ const CANDIDATES = {
   ],
   assignedIssues: [],
   authoredOpenPRs: [],
+  authoredOpenPRsWithoutReviewer: [],
 };
 
 const fetchGithubSyncCandidates = vi.fn();
@@ -66,7 +67,7 @@ describe("syncGithub", () => {
     const { syncGithub } = await import("../sync");
     const result = await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
 
-    expect(result).toEqual({ created: 1, closed: 0 });
+    expect(result).toEqual({ created: 1, closed: 0, openPRsWithoutReviewer: [] });
     expect(ensureSelfPerson).toHaveBeenCalledWith({
       userId: "u1",
       displayName: "Pranav Kavle",
@@ -97,7 +98,7 @@ describe("syncGithub", () => {
     const { syncGithub } = await import("../sync");
     const result = await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
 
-    expect(result).toEqual({ created: 0, closed: 0 });
+    expect(result).toEqual({ created: 0, closed: 0, openPRsWithoutReviewer: [] });
     expect(createArtifact).not.toHaveBeenCalled();
     expect(createCommitment).not.toHaveBeenCalled();
   });
@@ -119,7 +120,7 @@ describe("syncGithub", () => {
     const now = new Date("2026-08-14T00:00:00Z");
     const result = await syncGithub({ userId: "u1", token: "gho_test", now });
 
-    expect(result).toEqual({ created: 0, closed: 1 });
+    expect(result).toEqual({ created: 0, closed: 1, openPRsWithoutReviewer: [] });
     expect(closeCommitment).toHaveBeenCalledWith({
       id: "commitment-stale",
       userId: "u1",
@@ -145,7 +146,77 @@ describe("syncGithub", () => {
     const { syncGithub } = await import("../sync");
     const result = await syncGithub({ userId: "u1", token: "gho_test", now: new Date() });
 
-    expect(result).toEqual({ created: 0, closed: 0 });
+    expect(result).toEqual({ created: 0, closed: 0, openPRsWithoutReviewer: [] });
+    expect(closeCommitment).not.toHaveBeenCalled();
+  });
+
+  it("creates an artifact but no commitment for an authored PR with no reviewer, and reports it in the summary", async () => {
+    fetchGithubSyncCandidates.mockResolvedValue({
+      ...CANDIDATES,
+      reviewRequested: [],
+      authoredOpenPRsWithoutReviewer: [
+        {
+          nodeId: "PR_3",
+          number: 31,
+          title: "No reviewer requested yet",
+          url: "https://github.com/acme/repo/pull/31",
+          createdAt: "2026-08-13T00:00:00Z",
+        },
+      ],
+    });
+    findArtifactBySourceExternalId.mockResolvedValue(null);
+    createArtifact.mockResolvedValue({ id: "artifact-3" });
+
+    const { syncGithub } = await import("../sync");
+    const result = await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
+
+    expect(createArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "u1", source: "github", externalId: "PR_3" }),
+    );
+    expect(resolvePerson).not.toHaveBeenCalled();
+    expect(createCommitment).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      created: 0,
+      closed: 0,
+      openPRsWithoutReviewer: [
+        {
+          number: 31,
+          title: "No reviewer requested yet",
+          url: "https://github.com/acme/repo/pull/31",
+          createdAt: "2026-08-13T00:00:00Z",
+        },
+      ],
+    });
+  });
+
+  it("doesn't run a closed-state check for a commitment whose PR merely lost its reviewer", async () => {
+    fetchGithubSyncCandidates.mockResolvedValue({
+      ...CANDIDATES,
+      reviewRequested: [],
+      authoredOpenPRsWithoutReviewer: [
+        {
+          nodeId: "PR_1",
+          number: 10,
+          title: "Add retries",
+          url: "https://github.com/acme/repo/pull/10",
+          createdAt: "2026-08-10T00:00:00Z",
+        },
+      ],
+    });
+    findArtifactBySourceExternalId.mockResolvedValue({ id: "artifact-1" });
+    listCommitments.mockResolvedValue([
+      {
+        id: "commitment-1",
+        status: "open",
+        sourceArtifactId: "artifact-1",
+        sourceArtifact: { source: "github", externalId: "PR_1" },
+      },
+    ]);
+
+    const { syncGithub } = await import("../sync");
+    await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
+
+    expect(fetchGithubClosedStates).not.toHaveBeenCalled();
     expect(closeCommitment).not.toHaveBeenCalled();
   });
 

@@ -5,6 +5,8 @@ import {
   ApiErrorResponse,
   CompleteOnboardingRequest,
   GithubSyncResponse,
+  GoogleCalendarSyncResponse,
+  GoogleHealthSyncResponse,
   HealthResponse,
   MeResponse,
   UserSummary,
@@ -175,5 +177,25 @@ describe("GithubSyncResponse", () => {
 
   it("rejects a missing field", () => {
     expect(() => GithubSyncResponse.parse({ created: 2 })).toThrow();
+  });
+});
+
+describe("GoogleCalendarSyncResponse", () => {
+  it("accepts a count of days synced", () => {
+    expect(GoogleCalendarSyncResponse.parse({ daysSynced: 8 })).toEqual({ daysSynced: 8 });
+  });
+
+  it("rejects a missing field", () => {
+    expect(() => GoogleCalendarSyncResponse.parse({})).toThrow();
+  });
+});
+
+describe("GoogleHealthSyncResponse", () => {
+  it("accepts a count of points synced", () => {
+    expect(GoogleHealthSyncResponse.parse({ pointsSynced: 3 })).toEqual({ pointsSynced: 3 });
+  });
+
+  it("rejects a missing field", () => {
+    expect(() => GoogleHealthSyncResponse.parse({})).toThrow();
   });
 });
