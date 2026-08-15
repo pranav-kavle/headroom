@@ -28,11 +28,14 @@ describe("toAnthropicTools", () => {
     const tools = toAnthropicTools(engineTools());
 
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "close_pr",
+      "comment_on_pr",
       "get_action_policy",
       "get_events",
       "get_flight_status",
       "get_state",
       "get_weather",
+      "merge_pr",
     ]);
     for (const tool of tools) {
       expect(tool.input_schema.type).toBe("object");
@@ -117,11 +120,14 @@ describe("buildTurnParams", () => {
 
   it("passes the engine tools through to the model", () => {
     expect(params().tools.map((t) => t.name).sort()).toEqual([
+      "close_pr",
+      "comment_on_pr",
       "get_action_policy",
       "get_events",
       "get_flight_status",
       "get_state",
       "get_weather",
+      "merge_pr",
     ]);
   });
 

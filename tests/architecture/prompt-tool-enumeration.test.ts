@@ -56,8 +56,10 @@ describe("the policy prompt does not enumerate the tool registry", () => {
   });
 
   // If the prompt no longer says when to call these, the descriptions must.
+  // Scoped to reads (external and untiered) — a write action is external too,
+  // but "memory" framing doesn't apply to it the way it does to a lookup.
   it("leaves every live lookup self-describing, with its own freshness rule", () => {
-    for (const tool of engineTools().filter((t) => t.external)) {
+    for (const tool of engineTools().filter((t) => t.external && !t.tier)) {
       expect(tool.description, `${tool.name} should say when to call it`).toMatch(/call this/i);
       expect(
         tool.description,

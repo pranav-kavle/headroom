@@ -16,6 +16,7 @@ import {
 import { fetchWeather, type WeatherReport } from "./weather";
 import { fetchEvents, type EventSummary } from "./events";
 import { fetchFlightStatus, type FlightStatus } from "./flights";
+import { githubActionTools, type GithubActionCommitment } from "./github-actions";
 
 // Minimal JSON Schema shape — enough to describe these tools without pulling in
 // a schema library the engine would then be coupled to.
@@ -44,6 +45,11 @@ export interface EngineContext {
   fetchImpl?: typeof fetch;
   ticketmasterApiKey?: string;
   rapidApiKey?: string;
+  // The GitHub write actions' credential and commitment lookup — populated
+  // the same way as the API keys above: the app layer resolves them, the
+  // engine only ever receives what it was handed.
+  githubToken?: string;
+  getCommitmentById?: (id: string, userId: string) => Promise<GithubActionCommitment | null>;
 }
 
 export interface EngineTool {
@@ -198,9 +204,11 @@ export function engineTools(): EngineTool[] {
         });
       },
     },
+    ...githubActionTools,
   ];
 }
 
 export { buildState, getActionPolicy };
 export type { EngineState, StateCommitmentInput, ActionPolicy, ActionTier };
 export type { WeatherReport, EventSummary, FlightStatus };
+export type { GithubActionCommitment };

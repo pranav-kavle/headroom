@@ -20,6 +20,7 @@ export async function POST() {
     // already in hand, so /api/v1/agent/think never has to read the database on
     // the voice hot path. Bounded staleness: a rename applies at the next mint.
     const thinkAuthToken = signThinkToken(user.id, {
+      clerkUserId: user.clerkUserId,
       principal: {
         displayName: user.displayName,
         role: user.role,

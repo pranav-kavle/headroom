@@ -40,20 +40,25 @@ function toolNamed(name: string) {
 describe("engineTools", () => {
   it("exposes the engine tools built so far, under their design-doc §7/§16 names", () => {
     expect(engineTools().map((t) => t.name).sort()).toEqual([
+      "close_pr",
+      "comment_on_pr",
       "get_action_policy",
       "get_events",
       "get_flight_status",
       "get_state",
       "get_weather",
+      "merge_pr",
     ]);
   });
 
   // Routing lives here, not in the system prompt — the prompt used to name
   // these three and restate what each was for, which is a second source of
   // truth that grows with the registry. A description now has to carry its own
-  // trigger and its own reason not to answer from memory.
+  // trigger and its own reason not to answer from memory. Scoped to reads
+  // (external and untiered) — the memory framing doesn't apply to a write
+  // action, which is external but tiered.
   it("makes every live lookup self-describing — what it covers, when to call it, why memory is not enough", () => {
-    for (const tool of engineTools().filter((t) => t.external)) {
+    for (const tool of engineTools().filter((t) => t.external && !t.tier)) {
       expect(tool.description, tool.name).toMatch(/call this whenever/i);
       expect(tool.description, tool.name).toMatch(/never answer this from memory/i);
       expect(tool.description, tool.name).toMatch(/not trained on today/i);
@@ -84,16 +89,34 @@ describe("engineTools", () => {
 
   // The voice loop needs to know which tools hit a live third-party API (and
   // are therefore slow enough to warrant a filler message) versus which ones
-  // are the existing, fast, in-process engine reads.
-  it("flags the live third-party lookups as external, and the engine's own reads as not", () => {
+  // are the existing, fast, in-process engine reads. Write actions hit GitHub
+  // too, so they're external as well — the tier is what separates a read from
+  // an action needing the §8 gate.
+  it("flags everything that hits a live third-party API as external, and the engine's own reads as not", () => {
     const external = engineTools()
       .filter((t) => t.external)
       .map((t) => t.name)
       .sort();
-    expect(external).toEqual(["get_events", "get_flight_status", "get_weather"]);
+    expect(external).toEqual([
+      "close_pr",
+      "comment_on_pr",
+      "get_events",
+      "get_flight_status",
+      "get_weather",
+      "merge_pr",
+    ]);
 
     expect(toolNamed("get_state").external).toBeFalsy();
     expect(toolNamed("get_action_policy").external).toBeFalsy();
+  });
+
+  it("tiers the three GitHub write actions as tier_2, and leaves the reads untiered", () => {
+    for (const name of ["comment_on_pr", "close_pr", "merge_pr"]) {
+      expect(toolNamed(name).tier, name).toBe("tier_2");
+    }
+    for (const name of ["get_state", "get_weather", "get_events", "get_flight_status", "get_action_policy"]) {
+      expect(toolNamed(name).tier, name).toBeUndefined();
+    }
   });
 });
 

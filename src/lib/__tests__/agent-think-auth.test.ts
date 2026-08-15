@@ -20,6 +20,7 @@ describe("signThinkToken / verifyThinkToken", () => {
 
     expect(verifyThinkToken(token, { env: ENV })).toEqual({
       userId: "user-1",
+      clerkUserId: null,
       displayName: "Priya Raman",
       role: "product counsel",
       timezone: "America/Chicago",
@@ -33,10 +34,19 @@ describe("signThinkToken / verifyThinkToken", () => {
 
     expect(verifyThinkToken(legacy, { env: ENV })).toEqual({
       userId: "user-1",
+      clerkUserId: null,
       displayName: null,
       role: null,
       timezone: null,
     });
+  });
+
+  // The GitHub write tools resolve a live token via Clerk, keyed by the Clerk
+  // user id — a separate id from the internal one the token is bound to.
+  it("carries the Clerk user id through the signature, for resolving the GitHub token", () => {
+    const token = signThinkToken("user-1", { env: ENV, clerkUserId: "clerk-user-1" });
+
+    expect(verifyThinkToken(token, { env: ENV }).clerkUserId).toBe("clerk-user-1");
   });
 
   it("rejects a token whose principal was edited after signing", () => {

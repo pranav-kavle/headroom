@@ -301,9 +301,15 @@ them. It may not add reasons, drop reasons, or reorder them.
 | Tier | Contents | Policy |
 |---|---|---|
 | **1 — Private, reversible** | Draft replies to Drafts, calendar holds in free slots, email triage/labelling, GitHub issue labelling and assignment, approve lockfile-only dependency PRs | **Unattended.** Logged, undoable. Individually togglable |
-| **2 — Outward-facing** | Send a drafted reply, decline or move a meeting, comment on a PR | **One tap, always.** Not togglable — blanket send permission does not exist as a setting |
+| **2 — Outward-facing** | Send a drafted reply, decline or move a meeting, comment on a PR, close a PR, merge a PR | **One tap, always.** Not togglable — blanket send permission does not exist as a setting |
 | **3 — Money & third parties** | Purchases, bookings, cancellations | **Prepared, never executed.** Off by design, not by configuration |
 | **4 — Code** | Read a PR and draft review comments, fix trivial issues, push a branch | **Deferred.** See §14 |
+
+Closing and merging a PR sit in Tier 2, not Tier 4, added 2026-08-14: neither
+generates or pushes code, they only transition the state of a PR a human already
+authored and reviewed — the same kind of outward-facing state change as commenting.
+Tier 4's deferral is specifically about Headroom reaching into the codebase itself,
+which these do not do.
 
 Tier 1 autonomy is not optional polish — it is what makes Headroom something other than
 a notification app. But it is only enabled once §6's precision bar is met.
@@ -580,7 +586,7 @@ API exists.
 | Email | Draft, send, label, archive, unsubscribe | 1 / 2 | Low |
 | Calendar | Hold, move, decline, invite | 1 / 2 | Low |
 | Tasks | Create, complete, reschedule | 1 | Trivial |
-| GitHub | Comment, label, assign, review, open PRs, push branches | 2 / 4 | Low |
+| GitHub | Comment, close, merge, label, assign, review, open PRs, push branches | 2 / 4 | Low |
 | Slack / Teams | Post, schedule, set status, reply in thread | 2 | Medium |
 | Trackers | Linear, Jira, Asana, Notion — create, update, comment, reassign | 1 / 2 | Low each |
 | SMS & calls | Twilio — text or call a counterparty | 2 | Low |
