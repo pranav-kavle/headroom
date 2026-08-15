@@ -12,6 +12,10 @@ export interface SlackConversation {
   id: string;
   name: string | null;
   isIm: boolean;
+  // The other party, on a DM only. A DM has no `name` at all, so this is the
+  // only handle a caller has for labelling one with a person instead of an
+  // opaque channel id.
+  userId: string | null;
 }
 
 export interface SlackMessage {
@@ -106,6 +110,7 @@ export async function listSlackConversations(options: SlackCallOptions): Promise
         id: channel.id,
         name: typeof channel.name === "string" ? channel.name : null,
         isIm: channel.is_im === true,
+        userId: typeof channel.user === "string" ? channel.user : null,
       });
     }
 

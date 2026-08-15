@@ -18,6 +18,7 @@ import { fetchEvents, type EventSummary } from "./events";
 import { fetchFlightStatus, type FlightStatus } from "./flights";
 import { githubActionTools, type GithubActionArtifact } from "./github-actions";
 import { checkGithubTool } from "./github-check";
+import { slackTools, type SlackMessageArtifact } from "./slack";
 
 // Minimal JSON Schema shape — enough to describe these tools without pulling in
 // a schema library the engine would then be coupled to.
@@ -62,6 +63,16 @@ export interface EngineContext {
   // it merge. Injected rather than imported for the same reason as the lookup
   // above (port rule 6).
   markPullRequestClosed?: (artifactId: string, state: "merged" | "closed") => Promise<void>;
+  // Slack's credential and message read-back. One field rather than two
+  // because the sync needs both halves — the token to call Slack, and the
+  // user's own Slack id to tell their messages from everyone else's — and a
+  // context holding one without the other is not a connected workspace.
+  //
+  // The read-back exists because Slack has no extraction yet (2026-08-15 spec
+  // §1): its messages never become Commitments, so `listCommitments` above
+  // cannot see them and check_slack would have nothing to show but a count.
+  slackCredentials?: { accessToken: string; slackUserId: string };
+  listRecentSlackMessages?: (userId: string, limit: number) => Promise<SlackMessageArtifact[]>;
 }
 
 export interface EngineTool {
@@ -218,10 +229,11 @@ export function engineTools(): EngineTool[] {
     },
     checkGithubTool,
     ...githubActionTools,
+    ...slackTools,
   ];
 }
 
 export { buildState, getActionPolicy };
 export type { EngineState, StateCommitmentInput, ActionPolicy, ActionTier };
 export type { WeatherReport, EventSummary, FlightStatus };
-export type { GithubActionArtifact };
+export type { GithubActionArtifact, SlackMessageArtifact };

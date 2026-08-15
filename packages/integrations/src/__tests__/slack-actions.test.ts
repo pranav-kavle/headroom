@@ -2,16 +2,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const postSlackMessage = vi.fn();
 const fetchSlackTeamDomain = vi.fn();
+const listSlackConversations = vi.fn();
+const fetchSlackUserName = vi.fn();
 
 vi.mock("../slack/api", () => ({
   postSlackMessage: (input: unknown) => postSlackMessage(input),
   fetchSlackTeamDomain: (input: unknown) => fetchSlackTeamDomain(input),
+  listSlackConversations: (input: unknown) => listSlackConversations(input),
+  fetchSlackUserName: (input: unknown) => fetchSlackUserName(input),
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   postSlackMessage.mockResolvedValue({ ts: "1723680009.000100", channel: "C1" });
   fetchSlackTeamDomain.mockResolvedValue("headroom-dev");
+  listSlackConversations.mockResolvedValue([]);
+  fetchSlackUserName.mockResolvedValue(null);
 });
 
 describe("SLACK_SEND_TIER", () => {
@@ -21,6 +27,64 @@ describe("SLACK_SEND_TIER", () => {
     // into something Tier 1 autonomy would execute unattended.
     const { SLACK_SEND_TIER } = await import("../slack/actions");
     expect(SLACK_SEND_TIER).toBe("tier_2");
+  });
+});
+
+describe("listSlackSendTargets", () => {
+  it("returns channels by name, so a send target can be chosen without knowing Slack's ids", async () => {
+    const { listSlackSendTargets } = await import("../slack/actions");
+    listSlackConversations.mockResolvedValue([
+      { id: "C1", name: "engineering", isIm: false, userId: null },
+      { id: "C2", name: "design", isIm: false, userId: null },
+    ]);
+
+    const targets = await listSlackSendTargets({ token: "xoxp-1" });
+
+    expect(targets).toEqual([
+      { id: "C1", name: "engineering", isIm: false },
+      { id: "C2", name: "design", isIm: false },
+    ]);
+    expect(fetchSlackUserName).not.toHaveBeenCalled();
+  });
+
+  it("labels a DM with the other person's name, which the conversation list does not carry", async () => {
+    const { listSlackSendTargets } = await import("../slack/actions");
+    listSlackConversations.mockResolvedValue([{ id: "D1", name: null, isIm: true, userId: "U04AB" }]);
+    fetchSlackUserName.mockResolvedValue("Priya Raman");
+
+    const targets = await listSlackSendTargets({ token: "xoxp-1" });
+
+    expect(fetchSlackUserName).toHaveBeenCalledWith(expect.objectContaining({ userId: "U04AB" }));
+    expect(targets).toEqual([{ id: "D1", name: "Priya Raman", isIm: true }]);
+  });
+
+  it("keeps a DM whose name lookup fails, rather than dropping a reachable target", async () => {
+    const { listSlackSendTargets } = await import("../slack/actions");
+    listSlackConversations.mockResolvedValue([{ id: "D1", name: null, isIm: true, userId: "U04AB" }]);
+    fetchSlackUserName.mockResolvedValue(null);
+
+    expect(await listSlackSendTargets({ token: "xoxp-1" })).toEqual([
+      { id: "D1", name: null, isIm: true },
+    ]);
+  });
+
+  it("bounds how many name lookups one call can make", async () => {
+    // users.info is one call per DM against a rate limit. A workspace with 300
+    // open DMs would otherwise turn a single tool call into 300 requests.
+    const { listSlackSendTargets, SLACK_TARGET_LIMIT } = await import("../slack/actions");
+    listSlackConversations.mockResolvedValue(
+      Array.from({ length: SLACK_TARGET_LIMIT + 10 }, (_, i) => ({
+        id: `D${i}`,
+        name: null,
+        isIm: true,
+        userId: `U${i}`,
+      })),
+    );
+
+    const targets = await listSlackSendTargets({ token: "xoxp-1" });
+
+    expect(targets).toHaveLength(SLACK_TARGET_LIMIT);
+    expect(fetchSlackUserName).toHaveBeenCalledTimes(SLACK_TARGET_LIMIT);
   });
 });
 

@@ -113,13 +113,28 @@ function textOf(content: ModelContentBlock[]): string {
 
 // Provenance is read off the tool result, never off the model's prose — core
 // rule 2. Anything carrying an artifact id and a quote is citable evidence.
+//
+// Two shapes, because a source without extraction has no commitments to carry
+// its evidence: get_state's `openCommitments` name the artifact
+// `sourceArtifactId`, while check_slack's `recentMessages` are artifacts
+// themselves and name it `artifactId`. Both are an id plus the words that back
+// the claim; reading only the first would leave every Slack answer uncited.
+const CITABLE_KEYS: Array<{ list: string; id: string }> = [
+  { list: "openCommitments", id: "sourceArtifactId" },
+  { list: "recentMessages", id: "artifactId" },
+];
+
 function collectCitations(result: unknown, into: Citation[]): void {
-  const rows = (result as { openCommitments?: unknown })?.openCommitments;
-  if (!Array.isArray(rows)) return;
-  for (const row of rows) {
-    const { sourceArtifactId, quote } = (row ?? {}) as Record<string, unknown>;
-    if (typeof sourceArtifactId === "string" && typeof quote === "string") {
-      into.push({ artifactId: sourceArtifactId, quote });
+  for (const { list, id } of CITABLE_KEYS) {
+    const rows = (result as Record<string, unknown> | null)?.[list];
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      const record = (row ?? {}) as Record<string, unknown>;
+      const artifactId = record[id];
+      const { quote } = record;
+      if (typeof artifactId === "string" && typeof quote === "string") {
+        into.push({ artifactId, quote });
+      }
     }
   }
 }

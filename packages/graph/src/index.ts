@@ -10,8 +10,13 @@ export { prisma, pingDatabase } from "./client";
 export type { PrismaClient } from "./client";
 export { completeOnboarding, createUser, findUserByClerkId, listUsers } from "./users";
 export type { OnboardingInput, UserRow } from "./users";
-export { createArtifact, findArtifactById, findArtifactBySourceExternalId } from "./artifacts";
-export type { ArtifactRow } from "./artifacts";
+export {
+  createArtifact,
+  findArtifactById,
+  findArtifactBySourceExternalId,
+  listRecentArtifactsBySource,
+} from "./artifacts";
+export type { ArtifactRow, RecentArtifactRow } from "./artifacts";
 export { upsertCapacitySignal } from "./capacity-signals";
 export type { CapacitySignalRow } from "./capacity-signals";
 export { getGoogleHealthToken, upsertGoogleHealthToken } from "./google-health-token";

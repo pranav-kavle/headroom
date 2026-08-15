@@ -19,6 +19,7 @@ const listUsers = vi.fn();
 const pingDatabase = vi.fn();
 const listCommitments = vi.fn();
 const findArtifactById = vi.fn();
+const listRecentArtifactsBySource = vi.fn();
 const createArtifact = vi.fn();
 const mintDeepgramAgentToken = vi.fn();
 const signThinkToken = vi.fn();
@@ -47,6 +48,7 @@ vi.mock("@headroom/graph", () => ({
   pingDatabase: () => pingDatabase(),
   listCommitments: (userId: string) => listCommitments(userId),
   findArtifactById: (id: string, userId: string) => findArtifactById(id, userId),
+  listRecentArtifactsBySource: (input: unknown) => listRecentArtifactsBySource(input),
   createArtifact: (input: unknown) => createArtifact(input),
   completeOnboarding: (userId: string, input: unknown) => completeOnboarding(userId, input),
 }));
@@ -533,6 +535,92 @@ describe("POST /api/v1/agent/think", () => {
     await context.getArtifactById("a1", "ignored");
 
     expect(findArtifactById).toHaveBeenCalledWith("a1", USER_ROW.id);
+  });
+
+  // Slack's token is keyed on the *internal* user id, not the Clerk one:
+  // Headroom stores it itself after its own OAuth callback, where GitHub's
+  // lives in Clerk. Passing clerkUserId here finds nothing and silently
+  // presents a connected workspace as disconnected.
+  it("resolves a Slack token from the claims' internal userId and hands it to the engine", async () => {
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    getGithubAccessToken.mockResolvedValue(null);
+    getSlackCredentials.mockResolvedValue({
+      accessToken: "xoxp-live",
+      teamId: "T1",
+      slackUserId: "U1",
+    });
+    runAgentTurn.mockResolvedValue(turnResult());
+    const { POST } = await import("../agent/think/route");
+
+    await POST(makeThinkRequest([{ role: "user", content: "anything in slack?" }], "valid"));
+
+    expect(getSlackCredentials).toHaveBeenCalledWith(USER_ROW.id);
+    expect(runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({
+          slackCredentials: { accessToken: "xoxp-live", teamId: "T1", slackUserId: "U1" },
+        }),
+      }),
+    );
+  });
+
+  it("leaves slackToken unset when Slack is not connected", async () => {
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    getGithubAccessToken.mockResolvedValue(null);
+    getSlackCredentials.mockResolvedValue(null);
+    runAgentTurn.mockResolvedValue(turnResult());
+    const { POST } = await import("../agent/think/route");
+
+    await POST(makeThinkRequest([{ role: "user", content: "anything in slack?" }], "valid"));
+
+    expect(runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({ slackCredentials: undefined }),
+      }),
+    );
+  });
+
+  it("survives a failed Slack token lookup rather than dropping the turn", async () => {
+    // The user is mid-sentence. A decryption failure costs them Slack, not
+    // the whole conversation — same bargain the GitHub lookup above makes.
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    getGithubAccessToken.mockResolvedValue(null);
+    getSlackCredentials.mockRejectedValue(new Error("TOKEN_ENCRYPTION_KEY is not set"));
+    runAgentTurn.mockResolvedValue(turnResult());
+    const { POST } = await import("../agent/think/route");
+
+    const response = await POST(makeThinkRequest([{ role: "user", content: "hi" }], "valid"));
+
+    expect(response.status).toBe(200);
+    expect(runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({ slackCredentials: undefined }),
+      }),
+    );
+  });
+
+  it("passes a listRecentSlackMessages that reads this user's Slack artifacts", async () => {
+    verifyThinkToken.mockReturnValue(CLAIMS);
+    getGithubAccessToken.mockResolvedValue(null);
+    getSlackCredentials.mockResolvedValue(null);
+    runAgentTurn.mockResolvedValue(turnResult());
+    listRecentArtifactsBySource.mockResolvedValue([]);
+    const { POST } = await import("../agent/think/route");
+
+    await POST(makeThinkRequest([{ role: "user", content: "anything in slack?" }], "valid"));
+
+    const { context } = runAgentTurn.mock.calls[0][0] as {
+      context: { listRecentSlackMessages: (userId: string, limit: number) => unknown };
+    };
+    await context.listRecentSlackMessages("ignored", 25);
+
+    // Same closure discipline as getArtifactById: the id comes from the
+    // verified token, never from the argument the engine passes in.
+    expect(listRecentArtifactsBySource).toHaveBeenCalledWith({
+      userId: USER_ROW.id,
+      source: "slack",
+      limit: 25,
+    });
   });
 
   // 2026-08-13 spec §2: the turn is recorded whole — what was spoken, what
