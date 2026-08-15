@@ -42,15 +42,16 @@ One Next.js deployment. The client↔server contract is separated by rule, not b
 infrastructure:
 
 ```
-src/app/(app)/          PWA UI — renders props, holds no business logic
+src/app/{brief,commitments,ledger,controls}/   PWA UI — renders props, holds no business logic
 src/app/api/v1/…        the only client<->server surface
 packages/contracts/     Zod schemas + inferred types, shared
 packages/engine-mcp/    deterministic engine, MCP tools, tested
 packages/graph/         Prisma + graph queries — the only Prisma importer
+packages/integrations/  source integrations — GitHub, Calendar, Health, Slack
 packages/tokens/        design tokens as plain JS objects
 ```
 
-Three of these boundaries are enforced by tests in `tests/architecture/`, not by
+These boundaries are enforced by tests in `tests/architecture/`, not by
 convention.
 
 ## Getting started
