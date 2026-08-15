@@ -767,6 +767,29 @@ describe("GET /api/v1/integrations/google-health/authorize", () => {
     expect(cookie?.value).toBeTruthy();
     expect(cookie?.value).toBe(buildGoogleHealthAuthorizeUrl.mock.calls[0][0].state);
   });
+
+  it("builds an HTTPS redirect_uri from forwarded headers behind a TLS-terminating proxy", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveGoogleClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    buildGoogleHealthAuthorizeUrl.mockReturnValue("https://accounts.google.com/o/oauth2/v2/auth?mock=1");
+    const { GET } = await import("../integrations/google-health/authorize/route");
+
+    // Azure Container Apps terminates TLS upstream and forwards internally
+    // over plain HTTP — Google rejects a non-HTTPS redirect_uri outright for
+    // a non-localhost app, so this is the exact shape that broke in
+    // production (2026-08-15).
+    await GET(
+      new NextRequest("http://internal-container:3000/api/v1/integrations/google-health/authorize", {
+        headers: { "x-forwarded-proto": "https", "x-forwarded-host": "headroom.apps.human-angle.com" },
+      }),
+    );
+
+    expect(buildGoogleHealthAuthorizeUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        redirectUri: "https://headroom.apps.human-angle.com/api/v1/integrations/google-health/callback",
+      }),
+    );
+  });
 });
 
 describe("GET /api/v1/integrations/google-health/callback", () => {
