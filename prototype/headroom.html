@@ -85,6 +85,37 @@ body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-f
 .bar s{position:absolute;top:-3px;bottom:-3px;width:1.5px;background:#fff;box-shadow:0 0 0 1px rgba(16,18,25,.25)}
 .cap-note{font-size:12.5px;color:var(--ink-3);line-height:1.45}
 
+/* ---------- vitals: capacity as three readings, not one number ----------
+   A KPI row of stat tiles, not a chart: three measures on different scales
+   (hours, bpm, ms) must never share an axis. Each tile is value + sparkline
+   + delta against that metric's own baseline.
+   Direction is per-metric — falling sleep and HRV are strain, but so is
+   RISING resting HR — so tone is set per tile, never derived from the
+   arrow. Delta colour is always paired with an arrow and the words
+   above/below, so state never rests on colour alone.
+   Sparkline stroke is --ink-2, not --ink-3: ink-3 measures 2.47:1 on this
+   surface, under the 3:1 a mark needs. */
+.vit{margin-top:16px}
+.vit-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+/* the section label reuses .eyebrow — same treatment as "Needs you" above it */
+.vit-h em{font-style:normal;font-size:11.5px;color:var(--ink-3)}
+.vit-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.vt{padding:12px 11px 11px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface-2)}
+.vt-lab{font-size:11px;font-weight:600;color:var(--ink-2);letter-spacing:.01em}
+/* proportional figures on purpose — tabular-nums looks loose at display size */
+.vt-val{font-size:19px;font-weight:640;color:var(--ink);letter-spacing:-.02em;line-height:1.1;margin-top:5px}
+.vt-val u{font-size:12px;font-weight:560;color:var(--ink-2);text-decoration:none;margin-left:2px;letter-spacing:0}
+.spark{display:block;width:100%;height:20px;margin:9px 0 8px}
+.spark polyline{fill:none;stroke:var(--ink-2);stroke-width:1.5;stroke-linecap:round;
+  stroke-linejoin:round;vector-effect:non-scaling-stroke}
+/* 2px surface ring on the endpoint marker, not a border — see marks spec */
+.spark circle{fill:var(--ink);stroke:var(--surface-2);stroke-width:2;vector-effect:non-scaling-stroke}
+.vt-d{font-size:11px;line-height:1.35;display:flex;gap:4px;align-items:flex-start}
+.vt-d i{font-style:normal;font-size:9px;line-height:1.6;flex:0 0 auto}
+.vt-d[data-tone="strain"]{color:var(--amber)}
+.vt-d[data-tone="ok"]{color:var(--green)}
+.vt-d[data-tone="flat"]{color:var(--ink-3)}
+
 /* ---------- commitment row ---------- */
 .item{padding:20px 0;border-bottom:1px solid var(--line-2)}
 .item:last-child{border-bottom:0}
@@ -417,6 +448,44 @@ body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-f
           <div class="cap-note">8h over. Thursday is the pinch — 6h 15m of meetings already.</div>
         </div>
 
+        <div class="vit">
+          <div class="vit-h"><div class="eyebrow">Capacity</div><em>last night · vs 7-day baseline</em></div>
+          <div class="vit-row">
+            <div class="vt">
+              <div class="vt-lab">Sleep</div>
+              <div class="vt-val">5h 40m</div>
+              <svg class="spark" viewBox="0 0 64 20" preserveAspectRatio="none" role="img"
+                   aria-label="Sleep, last seven nights: 7.1, 6.8, 7.2, 6.4, 5.6, 5.4, 5.7 hours">
+                <polyline points="2,2.9 12,5.6 22,2 32,9.1 42,16.2 52,18 62,15.6"/>
+                <circle cx="62" cy="15.6" r="2.4"/>
+              </svg>
+              <div class="vt-d" data-tone="strain"><i>▼</i><span>1h 20m below</span></div>
+            </div>
+
+            <div class="vt">
+              <div class="vt-lab">Resting HR</div>
+              <div class="vt-val">58<u>bpm</u></div>
+              <svg class="spark" viewBox="0 0 64 20" preserveAspectRatio="none" role="img"
+                   aria-label="Resting heart rate, last seven days: 53, 54, 53, 55, 57, 58, 58 bpm">
+                <polyline points="2,18 12,14.8 22,18 32,11.6 42,5.2 52,2 62,2"/>
+                <circle cx="62" cy="2" r="2.4"/>
+              </svg>
+              <div class="vt-d" data-tone="strain"><i>▲</i><span>4 above</span></div>
+            </div>
+
+            <div class="vt">
+              <div class="vt-lab">HRV</div>
+              <div class="vt-val">42<u>ms</u></div>
+              <svg class="spark" viewBox="0 0 64 20" preserveAspectRatio="none" role="img"
+                   aria-label="Heart rate variability, last seven days: 52, 51, 49, 47, 45, 43, 42 ms">
+                <polyline points="2,2 12,3.6 22,6.8 32,10 42,13.2 52,16.4 62,18"/>
+                <circle cx="62" cy="18" r="2.4"/>
+              </svg>
+              <div class="vt-d" data-tone="strain"><i>▼</i><span>8 below</span></div>
+            </div>
+          </div>
+        </div>
+
         <div class="sec-head"><div class="eyebrow">Needs you</div><div class="count">3</div></div>
 
         <div class="item">
@@ -534,6 +603,47 @@ body{background:var(--canvas);font-family:var(--sans);color:var(--ink);-webkit-f
             <span><b>19h</b> promised · 26h free</span></div>
           <div class="bar"><i style="width:73%"></i><s style="left:100%"></s></div>
           <div class="cap-note">7h of slack. Friday afternoon is completely open.</div>
+        </div>
+
+        <!-- Same three tiles, recovered — this is where the green tone lives.
+             Resting HR falling is an improvement, so it reads "ok" on a DOWN
+             arrow while sleep reads "ok" on an UP arrow. Tone is per metric. -->
+        <div class="vit">
+          <div class="vit-h"><div class="eyebrow">Capacity</div><em>last night · vs 7-day baseline</em></div>
+          <div class="vit-row">
+            <div class="vt">
+              <div class="vt-lab">Sleep</div>
+              <div class="vt-val">7h 20m</div>
+              <svg class="spark" viewBox="0 0 64 20" preserveAspectRatio="none" role="img"
+                   aria-label="Sleep, last seven nights: 6.9, 7.1, 7.0, 7.4, 7.2, 7.3, 7.3 hours">
+                <polyline points="2,18 12,11.6 22,14.8 32,2 42,8.4 52,5.2 62,4.2"/>
+                <circle cx="62" cy="4.2" r="2.4"/>
+              </svg>
+              <div class="vt-d" data-tone="ok"><i>▲</i><span>20m above</span></div>
+            </div>
+
+            <div class="vt">
+              <div class="vt-lab">Resting HR</div>
+              <div class="vt-val">52<u>bpm</u></div>
+              <svg class="spark" viewBox="0 0 64 20" preserveAspectRatio="none" role="img"
+                   aria-label="Resting heart rate, last seven days: 55, 54, 54, 53, 53, 52, 52 bpm">
+                <polyline points="2,2 12,7.3 22,7.3 32,12.7 42,12.7 52,18 62,18"/>
+                <circle cx="62" cy="18" r="2.4"/>
+              </svg>
+              <div class="vt-d" data-tone="ok"><i>▼</i><span>2 below</span></div>
+            </div>
+
+            <div class="vt">
+              <div class="vt-lab">HRV</div>
+              <div class="vt-val">55<u>ms</u></div>
+              <svg class="spark" viewBox="0 0 64 20" preserveAspectRatio="none" role="img"
+                   aria-label="Heart rate variability, last seven days: 48, 50, 51, 52, 54, 54, 55 ms">
+                <polyline points="2,18 12,13.4 22,11.1 32,8.9 42,4.3 52,4.3 62,2"/>
+                <circle cx="62" cy="2" r="2.4"/>
+              </svg>
+              <div class="vt-d" data-tone="ok"><i>▲</i><span>5 above</span></div>
+            </div>
+          </div>
         </div>
 
         <div class="sec-head"><div class="eyebrow">Handled while you slept</div><div class="count">6</div></div>
