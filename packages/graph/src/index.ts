@@ -5,6 +5,8 @@ export type {
   DuePrecision,
   IdentityKind,
   TrackedPullRequestState,
+  ActionTier,
+  ActionStatus,
 } from "./generated/prisma/client";
 export { prisma, pingDatabase } from "./client";
 export type { PrismaClient } from "./client";
@@ -35,8 +37,15 @@ export {
   listCommitments,
 } from "./commitments";
 export type { CommitmentRow } from "./commitments";
-export { listActions } from "./actions";
+export {
+  createProposedAction,
+  findApprovableAction,
+  listActions,
+  markActionExecuted,
+  markActionFailed,
+} from "./actions";
 export type { ActionRow } from "./actions";
+export { finishAgentRun, startAgentRun } from "./agent-runs";
 export {
   closeTrackedPullRequest,
   closeTrackedPullRequestIfPresent,

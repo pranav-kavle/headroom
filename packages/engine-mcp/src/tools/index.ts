@@ -63,6 +63,18 @@ export interface EngineContext {
   // it merge. Injected rather than imported for the same reason as the lookup
   // above (port rule 6).
   markPullRequestClosed?: (artifactId: string, state: "merged" | "closed") => Promise<void>;
+  // §8's approval path for Tier 2, injected for the same port-rule-6 reason as
+  // everything above. The engine asks whether this exact call has already been
+  // offered to the user and confirmed by them; the app layer answers from
+  // stored Actions. Absent means no approval can ever resolve, which is the
+  // old behaviour — offers are made and nothing runs.
+  resolveApproval?: (call: {
+    tool: string;
+    tier: ActionTier;
+    payload: Record<string, unknown>;
+  }) => Promise<{ approved: boolean; actionId?: string }>;
+  recordActionExecuted?: (actionId: string, output: unknown) => Promise<void>;
+  recordActionFailed?: (actionId: string) => Promise<void>;
   // Slack's credential and message read-back. One field rather than two
   // because the sync needs both halves — the token to call Slack, and the
   // user's own Slack id to tell their messages from everyone else's — and a
