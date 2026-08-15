@@ -9,6 +9,9 @@ const createCommitment = vi.fn();
 const closeCommitment = vi.fn();
 const listCommitments = vi.fn();
 const upsertConnectorCursor = vi.fn();
+const upsertTrackedPullRequest = vi.fn();
+const listOpenTrackedPullRequests = vi.fn();
+const closeTrackedPullRequest = vi.fn();
 
 vi.mock("@headroom/graph", () => ({
   ensureSelfPerson: (input: unknown) => ensureSelfPerson(input),
@@ -20,6 +23,9 @@ vi.mock("@headroom/graph", () => ({
   closeCommitment: (input: unknown) => closeCommitment(input),
   listCommitments: (userId: string) => listCommitments(userId),
   upsertConnectorCursor: (input: unknown) => upsertConnectorCursor(input),
+  upsertTrackedPullRequest: (input: unknown) => upsertTrackedPullRequest(input),
+  listOpenTrackedPullRequests: (userId: string) => listOpenTrackedPullRequests(userId),
+  closeTrackedPullRequest: (input: unknown) => closeTrackedPullRequest(input),
 }));
 
 const CANDIDATES = {
@@ -54,6 +60,9 @@ beforeEach(() => {
   fetchGithubSyncCandidates.mockResolvedValue(CANDIDATES);
   fetchGithubClosedStates.mockResolvedValue([]);
   listCommitments.mockResolvedValue([]);
+  upsertTrackedPullRequest.mockResolvedValue({});
+  listOpenTrackedPullRequests.mockResolvedValue([]);
+  closeTrackedPullRequest.mockResolvedValue({});
 });
 
 describe("syncGithub", () => {
@@ -180,6 +189,9 @@ describe("syncGithub", () => {
       closed: 0,
       openPRsWithoutReviewer: [
         {
+          // Without this the PR is describable but not actionable — the
+          // GitHub write actions resolve through the artifact.
+          artifactId: "artifact-3",
           number: 31,
           title: "No reviewer requested yet",
           url: "https://github.com/acme/repo/pull/31",
@@ -187,6 +199,135 @@ describe("syncGithub", () => {
         },
       ],
     });
+  });
+
+  it("reports the existing artifact's id for a reviewer-less PR seen on an earlier sync", async () => {
+    fetchGithubSyncCandidates.mockResolvedValue({
+      ...CANDIDATES,
+      reviewRequested: [],
+      authoredOpenPRsWithoutReviewer: [
+        {
+          nodeId: "PR_3",
+          number: 31,
+          title: "No reviewer requested yet",
+          url: "https://github.com/acme/repo/pull/31",
+          createdAt: "2026-08-13T00:00:00Z",
+        },
+      ],
+    });
+    findArtifactBySourceExternalId.mockResolvedValue({ id: "artifact-existing" });
+
+    const { syncGithub } = await import("../sync");
+    const result = await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
+
+    expect(createArtifact).not.toHaveBeenCalled();
+    expect(result.openPRsWithoutReviewer[0].artifactId).toBe("artifact-existing");
+  });
+
+  it("tracks a reviewer-less PR as open so the UI has something to render", async () => {
+    fetchGithubSyncCandidates.mockResolvedValue({
+      ...CANDIDATES,
+      reviewRequested: [],
+      authoredOpenPRsWithoutReviewer: [
+        {
+          nodeId: "PR_3",
+          number: 80,
+          title: "Slack integration",
+          url: "https://github.com/acme/repo/pull/80",
+          createdAt: "2026-08-13T00:00:00Z",
+        },
+      ],
+    });
+    findArtifactBySourceExternalId.mockResolvedValue(null);
+    createArtifact.mockResolvedValue({ id: "artifact-3" });
+
+    const { syncGithub } = await import("../sync");
+    await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
+
+    expect(upsertTrackedPullRequest).toHaveBeenCalledWith({
+      userId: "u1",
+      artifactId: "artifact-3",
+      number: 80,
+      lastSeenAt: new Date("2026-08-14T00:00:00Z"),
+    });
+  });
+
+  it("tracks an authored PR that does have a reviewer, so gaining one doesn't look like closing", async () => {
+    fetchGithubSyncCandidates.mockResolvedValue({
+      ...CANDIDATES,
+      reviewRequested: [],
+      authoredOpenPRs: [
+        {
+          nodeId: "PR_4",
+          number: 81,
+          title: "Reviewed PR",
+          url: "https://github.com/acme/repo/pull/81",
+          createdAt: "2026-08-13T00:00:00Z",
+          counterpartyLogin: "mrodriguez",
+        },
+      ],
+    });
+    findArtifactBySourceExternalId.mockResolvedValue(null);
+    createArtifact.mockResolvedValue({ id: "artifact-4" });
+    findCommitmentBySourceArtifact.mockResolvedValue(null);
+    resolvePerson.mockResolvedValue({ id: "person-1" });
+    listOpenTrackedPullRequests.mockResolvedValue([
+      { artifactId: "artifact-4", artifact: { externalId: "PR_4" } },
+    ]);
+
+    const { syncGithub } = await import("../sync");
+    await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
+
+    expect(upsertTrackedPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ artifactId: "artifact-4", number: 81 }),
+    );
+    // Seen this sync, so it must not be checked for closure.
+    expect(fetchGithubClosedStates).not.toHaveBeenCalled();
+    expect(closeTrackedPullRequest).not.toHaveBeenCalled();
+  });
+
+  it("closes a tracked PR that GitHub reports merged", async () => {
+    fetchGithubSyncCandidates.mockResolvedValue({ ...CANDIDATES, reviewRequested: [] });
+    listOpenTrackedPullRequests.mockResolvedValue([
+      { artifactId: "artifact-gone", artifact: { externalId: "PR_GONE" } },
+    ]);
+    fetchGithubClosedStates.mockResolvedValue([{ nodeId: "PR_GONE", closedAs: "fulfilled" }]);
+
+    const { syncGithub } = await import("../sync");
+    await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
+
+    expect(closeTrackedPullRequest).toHaveBeenCalledWith({
+      artifactId: "artifact-gone",
+      state: "merged",
+      at: new Date("2026-08-14T00:00:00Z"),
+    });
+  });
+
+  it("records a tracked PR closed without merging as closed, not merged", async () => {
+    fetchGithubSyncCandidates.mockResolvedValue({ ...CANDIDATES, reviewRequested: [] });
+    listOpenTrackedPullRequests.mockResolvedValue([
+      { artifactId: "artifact-gone", artifact: { externalId: "PR_GONE" } },
+    ]);
+    fetchGithubClosedStates.mockResolvedValue([{ nodeId: "PR_GONE", closedAs: "cancelled" }]);
+
+    const { syncGithub } = await import("../sync");
+    await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
+
+    expect(closeTrackedPullRequest).toHaveBeenCalledWith(expect.objectContaining({ state: "closed" }));
+  });
+
+  // §3 rule 5 — when the engine can't determine something, it doesn't guess.
+  it("leaves a tracked PR open when GitHub's state is ambiguous", async () => {
+    fetchGithubSyncCandidates.mockResolvedValue({ ...CANDIDATES, reviewRequested: [] });
+    listOpenTrackedPullRequests.mockResolvedValue([
+      { artifactId: "artifact-gone", artifact: { externalId: "PR_GONE" } },
+    ]);
+    fetchGithubClosedStates.mockResolvedValue([]);
+
+    const { syncGithub } = await import("../sync");
+    await syncGithub({ userId: "u1", token: "gho_test", now: new Date("2026-08-14T00:00:00Z") });
+
+    expect(closeTrackedPullRequest).not.toHaveBeenCalled();
   });
 
   it("doesn't run a closed-state check for a commitment whose PR merely lost its reviewer", async () => {

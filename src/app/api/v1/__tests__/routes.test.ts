@@ -18,7 +18,7 @@ const completeOnboarding = vi.fn();
 const listUsers = vi.fn();
 const pingDatabase = vi.fn();
 const listCommitments = vi.fn();
-const getCommitmentById = vi.fn();
+const findArtifactById = vi.fn();
 const createArtifact = vi.fn();
 const mintDeepgramAgentToken = vi.fn();
 const signThinkToken = vi.fn();
@@ -46,7 +46,7 @@ vi.mock("@headroom/graph", () => ({
   listUsers: () => listUsers(),
   pingDatabase: () => pingDatabase(),
   listCommitments: (userId: string) => listCommitments(userId),
-  getCommitmentById: (id: string, userId: string) => getCommitmentById(id, userId),
+  findArtifactById: (id: string, userId: string) => findArtifactById(id, userId),
   createArtifact: (input: unknown) => createArtifact(input),
   completeOnboarding: (userId: string, input: unknown) => completeOnboarding(userId, input),
 }));
@@ -518,19 +518,21 @@ describe("POST /api/v1/agent/think", () => {
     );
   });
 
-  it("passes a getCommitmentById that delegates to the graph, scoped to this user", async () => {
+  it("passes a getArtifactById that delegates to the graph, scoped to this user", async () => {
     verifyThinkToken.mockReturnValue(CLAIMS);
     getGithubAccessToken.mockResolvedValue(null);
     runAgentTurn.mockResolvedValue(turnResult());
-    getCommitmentById.mockResolvedValue({ id: "c1" });
+    findArtifactById.mockResolvedValue({ id: "a1" });
     const { POST } = await import("../agent/think/route");
 
     await POST(makeThinkRequest([{ role: "user", content: "what day is it?" }], "valid"));
 
-    const { context } = runAgentTurn.mock.calls[0][0] as { context: { getCommitmentById: (id: string, userId: string) => unknown } };
-    await context.getCommitmentById("c1", "ignored");
+    const { context } = runAgentTurn.mock.calls[0][0] as { context: { getArtifactById: (id: string, userId: string) => unknown } };
+    // The second argument is ignored on purpose: the route closes over the
+    // authenticated user's id so the model cannot reach another user's rows.
+    await context.getArtifactById("a1", "ignored");
 
-    expect(getCommitmentById).toHaveBeenCalledWith("c1", USER_ROW.id);
+    expect(findArtifactById).toHaveBeenCalledWith("a1", USER_ROW.id);
   });
 
   // 2026-08-13 spec §2: the turn is recorded whole — what was spoken, what
@@ -751,6 +753,24 @@ describe("POST /api/v1/integrations/google-health/sync", () => {
     const { POST } = await import("../integrations/google-health/sync/route");
 
     expect((await POST()).status).toBe(502);
+  });
+
+  // Google's own message is the only thing that distinguishes a disabled API
+  // from a bad filter from an unexpected payload shape, and the container's
+  // console isn't readable from here — so it has to travel to the client.
+  it("surfaces the underlying failure message rather than a generic one", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveGoogleClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    getValidGoogleHealthAccessToken.mockResolvedValue("ya29_live");
+    syncGoogleHealth.mockRejectedValue(
+      new Error("Google Health API error (sleep): Health API has not been used in project 241789891423 before"),
+    );
+    const { POST } = await import("../integrations/google-health/sync/route");
+
+    const body = await (await POST()).json();
+    expect(body.error).toBe(
+      "Google Health API error (sleep): Health API has not been used in project 241789891423 before",
+    );
   });
 });
 

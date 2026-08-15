@@ -4,12 +4,13 @@ export type {
   CommitmentDirection,
   DuePrecision,
   IdentityKind,
+  TrackedPullRequestState,
 } from "./generated/prisma/client";
 export { prisma, pingDatabase } from "./client";
 export type { PrismaClient } from "./client";
 export { completeOnboarding, createUser, findUserByClerkId, listUsers } from "./users";
 export type { OnboardingInput, UserRow } from "./users";
-export { createArtifact, findArtifactBySourceExternalId } from "./artifacts";
+export { createArtifact, findArtifactById, findArtifactBySourceExternalId } from "./artifacts";
 export type { ArtifactRow } from "./artifacts";
 export { upsertCapacitySignal } from "./capacity-signals";
 export type { CapacitySignalRow } from "./capacity-signals";
@@ -31,3 +32,11 @@ export {
 export type { CommitmentRow } from "./commitments";
 export { listActions } from "./actions";
 export type { ActionRow } from "./actions";
+export {
+  closeTrackedPullRequest,
+  closeTrackedPullRequestIfPresent,
+  listOpenPullRequestsWithoutCommitment,
+  listOpenTrackedPullRequests,
+  upsertTrackedPullRequest,
+} from "./tracked-pull-requests";
+export type { TrackedPullRequestRow } from "./tracked-pull-requests";

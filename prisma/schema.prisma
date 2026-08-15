@@ -50,6 +50,7 @@ model User {
   actions          Action[]
   labels           Label[]
   connectorCursors ConnectorCursor[]
+  trackedPullRequests TrackedPullRequest[]
   googleHealthToken GoogleHealthToken?
   slackToken        SlackToken?
 
@@ -216,6 +217,12 @@ enum ConnectorCursorStatus {
   error
 }
 
+enum TrackedPullRequestState {
+  open
+  merged
+  closed
+}
+
 model Person {
   id           String   @id @default(uuid())
   userId       String   @map("user_id")
@@ -263,16 +270,48 @@ model Artifact {
   rawRef         String?        @map("raw_ref")
   createdAt      DateTime       @default(now()) @map("created_at")
 
-  user               User              @relation(fields: [userId], references: [id])
-  authorPerson       Person?           @relation(fields: [authorPersonId], references: [id], onDelete: Restrict)
+  user               User                 @relation(fields: [userId], references: [id])
+  authorPerson       Person?              @relation(fields: [authorPersonId], references: [id], onDelete: Restrict)
   sourcedCommitments Commitment[]
   commitmentEvents   CommitmentEvent[]
   capacitySignals    CapacitySignal[]
+  trackedPullRequest TrackedPullRequest?
 
   @@unique([userId, source, externalId])
   @@index([userId])
   @@index([authorPersonId])
   @@map("artifact")
+}
+
+// Open/closed state for your own PRs, which an Artifact deliberately cannot
+// carry: an artifact is an immutable fact ("this PR existed, here is the
+// quote"), so it has no status to go stale. Commitments carry their own
+// status and get invalidated each sync — but a PR with no requested reviewer
+// has no counterparty and therefore no commitment, which left nowhere to
+// record that it is still open. Without this row the UI would list every PR
+// you ever opened, forever.
+//
+// Title and url are NOT duplicated here — they live on the Artifact, which
+// stays the single provenance record (§3 rule 2). This model holds only what
+// changes over time.
+model TrackedPullRequest {
+  id         String                  @id @default(uuid())
+  userId     String                  @map("user_id")
+  artifactId String                  @unique @map("artifact_id")
+  number     Int
+  state      TrackedPullRequestState @default(open)
+  // Stamped every sync that still sees the PR open, so a row that stops being
+  // seen is distinguishable from one that was never re-checked.
+  lastSeenAt DateTime                @map("last_seen_at")
+  closedAt   DateTime?               @map("closed_at")
+  createdAt  DateTime                @default(now()) @map("created_at")
+  updatedAt  DateTime                @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id])
+  artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+
+  @@index([userId, state])
+  @@map("tracked_pull_request")
 }
 
 model Commitment {

@@ -16,7 +16,7 @@ import {
 import { fetchWeather, type WeatherReport } from "./weather";
 import { fetchEvents, type EventSummary } from "./events";
 import { fetchFlightStatus, type FlightStatus } from "./flights";
-import { githubActionTools, type GithubActionCommitment } from "./github-actions";
+import { githubActionTools, type GithubActionArtifact } from "./github-actions";
 import { checkGithubTool } from "./github-check";
 
 // Minimal JSON Schema shape — enough to describe these tools without pulling in
@@ -46,11 +46,22 @@ export interface EngineContext {
   fetchImpl?: typeof fetch;
   ticketmasterApiKey?: string;
   rapidApiKey?: string;
-  // The GitHub write actions' credential and commitment lookup — populated
+  // The GitHub write actions' credential and artifact lookup — populated
   // the same way as the API keys above: the app layer resolves them, the
   // engine only ever receives what it was handed.
+  //
+  // Keyed on the Artifact, not the Commitment: every synced PR has an
+  // artifact, but only PRs with a counterparty have a commitment, so
+  // commitment-keyed actions could not reach your own reviewer-less PRs at
+  // all. The artifact is also the unit provenance hangs off (§3 rule 2).
   githubToken?: string;
-  getCommitmentById?: (id: string, userId: string) => Promise<GithubActionCommitment | null>;
+  getArtifactById?: (id: string, userId: string) => Promise<GithubActionArtifact | null>;
+  // Called after a merge or close succeeds on GitHub. Acting on a PR is the
+  // one moment its new state is known without asking, so waiting for the next
+  // sync would leave the UI showing a PR as open right after the user watched
+  // it merge. Injected rather than imported for the same reason as the lookup
+  // above (port rule 6).
+  markPullRequestClosed?: (artifactId: string, state: "merged" | "closed") => Promise<void>;
 }
 
 export interface EngineTool {
@@ -213,4 +224,4 @@ export function engineTools(): EngineTool[] {
 export { buildState, getActionPolicy };
 export type { EngineState, StateCommitmentInput, ActionPolicy, ActionTier };
 export type { WeatherReport, EventSummary, FlightStatus };
-export type { GithubActionCommitment };
+export type { GithubActionArtifact };
