@@ -58,4 +58,6 @@ jobs:
               TICKETMASTER_API_KEY="${{ secrets.TICKETMASTER_API_KEY }}" \
               RAPIDAPI_KEY="${{ secrets.RAPIDAPI_KEY }}" \
               GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
-              GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
+              GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+              SLACK_CLIENT_ID="${{ secrets.SLACK_CLIENT_ID }}" \
+              SLACK_CLIENT_SECRET="${{ secrets.SLACK_CLIENT_SECRET }}"

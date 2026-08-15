@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createUser, listConnectorCursors, prisma, upsertConnectorCursor } from "../index";
+import { createUser, getConnectorCursor, listConnectorCursors, prisma, upsertConnectorCursor } from "../index";
 
 const clerkIds: string[] = [];
 const userIds: string[] = [];
@@ -104,5 +104,47 @@ describe("upsertConnectorCursor", () => {
 
     expect(cursor.status).toBe("error");
     expect(cursor.errorMessage).toBe("GitHub is not connected yet.");
+  });
+
+  it("stores and returns a resume cursor payload", async () => {
+    const user = await makeUser("cursor_payload");
+
+    await upsertConnectorCursor({
+      userId: user.id,
+      source: "slack",
+      status: "idle",
+      cursor: { channels: { C1: "1723680000.000100" } },
+    });
+
+    const row = await getConnectorCursor(user.id, "slack");
+    expect(row?.cursor).toEqual({ channels: { C1: "1723680000.000100" } });
+  });
+
+  it("leaves an existing cursor payload alone on a status-only update", async () => {
+    // runIntegrationSync flips status to running/idle around every sync
+    // without knowing anything about the payload. If those calls wrote
+    // `cursor: null` by omission, every Slack sync would silently re-ingest
+    // the entire message history.
+    const user = await makeUser("cursor_preserve");
+    await upsertConnectorCursor({
+      userId: user.id,
+      source: "slack",
+      status: "idle",
+      cursor: { channels: { C1: "1723680000.000100" } },
+    });
+
+    await upsertConnectorCursor({ userId: user.id, source: "slack", status: "running" });
+
+    const row = await getConnectorCursor(user.id, "slack");
+    expect(row?.status).toBe("running");
+    expect(row?.cursor).toEqual({ channels: { C1: "1723680000.000100" } });
+  });
+});
+
+describe("getConnectorCursor", () => {
+  it("returns null when the source has never synced", async () => {
+    const user = await makeUser("cursor_absent");
+
+    expect(await getConnectorCursor(user.id, "slack")).toBeNull();
   });
 });
