@@ -40,6 +40,7 @@ function toolNamed(name: string) {
 describe("engineTools", () => {
   it("exposes the engine tools built so far, under their design-doc §7/§16 names", () => {
     expect(engineTools().map((t) => t.name).sort()).toEqual([
+      "check_github",
       "close_pr",
       "comment_on_pr",
       "get_action_policy",
@@ -98,6 +99,7 @@ describe("engineTools", () => {
       .map((t) => t.name)
       .sort();
     expect(external).toEqual([
+      "check_github",
       "close_pr",
       "comment_on_pr",
       "get_events",
@@ -114,7 +116,14 @@ describe("engineTools", () => {
     for (const name of ["comment_on_pr", "close_pr", "merge_pr"]) {
       expect(toolNamed(name).tier, name).toBe("tier_2");
     }
-    for (const name of ["get_state", "get_weather", "get_events", "get_flight_status", "get_action_policy"]) {
+    for (const name of [
+      "get_state",
+      "get_weather",
+      "get_events",
+      "get_flight_status",
+      "get_action_policy",
+      "check_github",
+    ]) {
       expect(toolNamed(name).tier, name).toBeUndefined();
     }
   });
