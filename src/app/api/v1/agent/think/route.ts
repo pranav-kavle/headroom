@@ -165,6 +165,12 @@ export async function POST(request: NextRequest) {
               payload,
               excludeAgentRunId: agentRunId,
               proposedAfter: new Date(now.getTime() - APPROVAL_WINDOW_MS),
+              // Deepgram sends this endpoint more than one request for a single
+              // utterance, and each one opens its own run — so "a different
+              // run" was never enough to mean "the user spoke again". The
+              // second request would match the first's proposal and execute on
+              // the asking turn, before the offer had even been spoken.
+              utterance: transcript,
             });
             if (approvable) return { approved: true, actionId: approvable.id };
 

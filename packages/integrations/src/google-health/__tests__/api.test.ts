@@ -2,12 +2,30 @@ import { describe, expect, it } from "vitest";
 import { fetchGoogleHealthDataPoints, parseGoogleHealthDataPoints } from "../api";
 
 describe("parseGoogleHealthDataPoints", () => {
-  it("parses sleep minutes into hours", () => {
+  // The live shape, not the guessed one: minutesAsleep lives under `summary`,
+  // and as an int64 it arrives as a JSON *string*. Reading `sleep.minutesAsleep`
+  // as a number missed on both counts (2026-08-15).
+  it("parses sleep minutes into hours from the summary's int64 string", () => {
     const json = {
       dataPoints: [
         {
           name: "users/me/dataTypes/sleep/dataPoints/1",
-          sleep: { interval: { startTime: "2026-08-13T22:00:00Z", endTime: "2026-08-14T05:12:00Z" }, minutesAsleep: 432 },
+          sleep: {
+            interval: { startTime: "2026-08-13T22:00:00Z", endTime: "2026-08-14T05:12:00Z" },
+            type: "SLEEP_TYPE_STAGES",
+            stages: [{ startTime: "2026-08-13T22:00:00Z", endTime: "2026-08-13T23:00:00Z", type: "LIGHT" }],
+            metadata: {},
+            summary: {
+              stagesSummary: [],
+              minutesInSleepPeriod: "452",
+              minutesToFallAsleep: "8",
+              minutesAsleep: "432",
+              minutesAwake: "20",
+            },
+            createTime: "2026-08-14T06:00:00Z",
+            updateTime: "2026-08-14T06:00:00Z",
+            shortAwakenings: 3,
+          },
         },
       ],
     };
@@ -17,12 +35,52 @@ describe("parseGoogleHealthDataPoints", () => {
     expect(result).toEqual([{ forDate: "2026-08-13", value: 7.2, unit: "hours" }]);
   });
 
-  it("parses resting heart rate in bpm", () => {
+  // Proto3 JSON permits an int64 as a bare number too, and nothing about the
+  // reading changes if Google ever sends one.
+  it("accepts a numeric minutesAsleep as well as the string form", () => {
+    const json = {
+      dataPoints: [
+        {
+          name: "n",
+          sleep: { interval: { startTime: "2026-08-13T22:00:00Z" }, summary: { minutesAsleep: 432 } },
+        },
+      ],
+    };
+
+    expect(parseGoogleHealthDataPoints("sleep", json)).toEqual([
+      { forDate: "2026-08-13", value: 7.2, unit: "hours" },
+    ]);
+  });
+
+  // The error that sent us round this loop twice named only the top-level
+  // keys, which said "minutesAsleep is missing" while it sat one level down.
+  // Naming the summary's keys too makes the next shape surprise mechanical.
+  it("names both the sleep and summary keys when minutesAsleep is missing", () => {
+    const json = {
+      dataPoints: [
+        {
+          name: "n",
+          sleep: { interval: { startTime: "2026-08-13T22:00:00Z" }, summary: { minutesAwake: "20" } },
+        },
+      ],
+    };
+
+    expect(() => parseGoogleHealthDataPoints("sleep", json)).toThrow(/summary keys: minutesAwake/);
+  });
+
+  // Daily types have no `interval` at all — they carry a civil
+  // google.type.Date of integers. Requiring interval.startTime for every kind
+  // dropped every RHR and HRV row. beatsPerMinute is int64, so a string too.
+  it("parses resting heart rate in bpm from a civil date and an int64 string", () => {
     const json = {
       dataPoints: [
         {
           name: "users/me/dataTypes/daily-resting-heart-rate/dataPoints/1",
-          dailyRestingHeartRate: { interval: { startTime: "2026-08-13T00:00:00Z" }, beatsPerMinute: 58 },
+          dailyRestingHeartRate: {
+            date: { year: 2026, month: 8, day: 13 },
+            dailyRestingHeartRateMetadata: {},
+            beatsPerMinute: "58",
+          },
         },
       ],
     };
@@ -32,12 +90,29 @@ describe("parseGoogleHealthDataPoints", () => {
     expect(result).toEqual([{ forDate: "2026-08-13", value: 58, unit: "bpm" }]);
   });
 
-  it("parses HRV in milliseconds when the rmssdMillis field is present", () => {
+  // Single-digit months and days have to zero-pad, or forDate stops being an
+  // ISO date and the "2026-8-3" string silently misfiles the reading.
+  it("zero-pads a single-digit month and day", () => {
+    const json = {
+      dataPoints: [
+        { name: "n", dailyRestingHeartRate: { date: { year: 2026, month: 8, day: 3 }, beatsPerMinute: "58" } },
+      ],
+    };
+
+    expect(parseGoogleHealthDataPoints("rhr", json)[0].forDate).toBe("2026-08-03");
+  });
+
+  it("parses HRV from averageHeartRateVariabilityMilliseconds", () => {
     const json = {
       dataPoints: [
         {
           name: "users/me/dataTypes/daily-heart-rate-variability/dataPoints/1",
-          dailyHeartRateVariability: { interval: { startTime: "2026-08-13T00:00:00Z" }, rmssdMillis: 42 },
+          dailyHeartRateVariability: {
+            date: { year: 2026, month: 8, day: 13 },
+            averageHeartRateVariabilityMilliseconds: 42,
+            deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds: 51.7,
+            nonRemHeartRateBeatsPerMinute: "54",
+          },
         },
       ],
     };
@@ -47,24 +122,32 @@ describe("parseGoogleHealthDataPoints", () => {
     expect(result).toEqual([{ forDate: "2026-08-13", value: 42, unit: "ms" }]);
   });
 
-  it("throws a named, actionable error when an HRV data point has an unrecognized shape", () => {
+  // Deep-sleep RMSSD is a different measure, not a stand-in. Silently
+  // substituting it on days the average is absent would make the baseline
+  // comparison read a field switch as a physiological change.
+  it("refuses to substitute deep-sleep RMSSD when the average is absent", () => {
     const json = {
       dataPoints: [
         {
-          name: "users/me/dataTypes/daily-heart-rate-variability/dataPoints/1",
-          dailyHeartRateVariability: { interval: { startTime: "2026-08-13T00:00:00Z" }, somethingElse: 42 },
+          name: "n",
+          dailyHeartRateVariability: {
+            date: { year: 2026, month: 8, day: 13 },
+            deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds: 51.7,
+          },
         },
       ],
     };
 
-    expect(() => parseGoogleHealthDataPoints("hrv", json)).toThrow(/unrecognized shape/i);
+    expect(() => parseGoogleHealthDataPoints("hrv", json)).toThrow(
+      /averageHeartRateVariabilityMilliseconds/,
+    );
   });
 
-  it("skips a data point missing an interval start time while keeping the rest", () => {
+  it("skips a daily data point missing its date while keeping the rest", () => {
     const json = {
       dataPoints: [
-        { name: "n", dailyRestingHeartRate: { beatsPerMinute: 58 } },
-        { name: "n2", dailyRestingHeartRate: { interval: { startTime: "2026-08-13T00:00:00Z" }, beatsPerMinute: 60 } },
+        { name: "n", dailyRestingHeartRate: { beatsPerMinute: "58" } },
+        { name: "n2", dailyRestingHeartRate: { date: { year: 2026, month: 8, day: 13 }, beatsPerMinute: "60" } },
       ],
     };
 
