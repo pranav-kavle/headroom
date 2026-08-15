@@ -97,6 +97,11 @@
 
 .t {
   flex: 1;
+  /* A flex item defaults to min-width:auto, which refuses to shrink below its
+     own content. Without this, a long sync error made this block as wide as
+     the message and pushed the row's button out — where .card's
+     overflow:hidden clipped it off screen entirely, leaving no way to retry. */
+  min-width: 0;
 }
 
 .t b {
@@ -113,6 +118,21 @@
   color: var(--hr-ink-3);
   margin-top: 3px;
   line-height: 1.42;
+  /* Upstream errors quote API messages, which carry long unbroken tokens
+     (URLs, SCREAMING_SNAKE codes). Break them instead of letting one word set
+     the row's width. */
+  overflow-wrap: anywhere;
+}
+
+/* A failure gets its own line rather than being glued to the status text with
+   an em-dash, where "Connected · synced 2h ago — Google Health API error…"
+   read as one run-on sentence. Amber matches the Reconnect pill: a state of
+   the world, not a brand colour. */
+/* Selector must out-specify `.t em` above, which would otherwise win on
+   specificity and paint this the same grey as the status line. */
+.t em.err {
+  color: var(--hr-amber);
+  margin-top: 4px;
 }
 
 .v {
@@ -187,6 +207,8 @@
 }
 
 .lockpill {
+  /* Never shrink or get pushed out of .arow, whatever the text beside it. */
+  flex: 0 0 auto;
   font-size: 10.5px;
   font-weight: 640;
   letter-spacing: 0.04em;
@@ -199,6 +221,8 @@
 }
 
 .actionpill {
+  /* Never shrink or get pushed out of .arow, whatever the text beside it. */
+  flex: 0 0 auto;
   font-size: 10.5px;
   font-weight: 640;
   letter-spacing: 0.04em;
@@ -240,6 +264,8 @@
 }
 
 .warnpill {
+  /* Never shrink or get pushed out of .arow, whatever the text beside it. */
+  flex: 0 0 auto;
   font-size: 11px;
   font-weight: 620;
   color: var(--hr-amber);
