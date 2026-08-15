@@ -54,6 +54,19 @@ describe("buildSlackAuthorizeUrl", () => {
     expect(SLACK_USER_SCOPES).toContain("im:history");
   });
 
+  // The scope pair every Slack integration gets wrong once. `*:history` reads
+  // the messages inside a conversation; `*:read` is what lets you enumerate
+  // the conversations in the first place. syncSlack's very first call is
+  // users.conversations, so history-only scopes fail the whole sync on
+  // missing_scope before a single message is fetched — which is exactly how
+  // this shipped.
+  it("pairs every history scope with the read scope needed to list those conversations", () => {
+    for (const kind of ["channels", "groups", "im", "mpim"]) {
+      expect(SLACK_USER_SCOPES, `${kind}:history without ${kind}:read`).toContain(`${kind}:read`);
+      expect(SLACK_USER_SCOPES).toContain(`${kind}:history`);
+    }
+  });
+
   it("includes team:read, which permalink construction depends on", () => {
     // syncSlack calls team.info once per run to resolve the workspace
     // subdomain. Omitting this scope fails the whole sync on missing_scope

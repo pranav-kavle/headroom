@@ -6,9 +6,18 @@ import type { EnvSource } from "./env";
 // Thursday"). These go in the `user_scope` parameter; putting them in `scope`
 // would yield a bot token that reads almost nothing.
 export const SLACK_USER_SCOPES = [
+  // Two families, and both are required. `*:history` reads the messages
+  // inside a conversation; `*:read` is what `users.conversations` needs to
+  // enumerate the conversations at all. Since enumeration is the sync's first
+  // call, history-only scopes fail the entire run on missing_scope before a
+  // single message is fetched — they never degrade gracefully.
+  "channels:read",
   "channels:history",
+  "groups:read",
   "groups:history",
+  "im:read",
   "im:history",
+  "mpim:read",
   "mpim:history",
   "users:read",
   // team.info, which the sync calls once per run to resolve the workspace
