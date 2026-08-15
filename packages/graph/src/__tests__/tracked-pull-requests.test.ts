@@ -7,6 +7,7 @@ import {
   createUser,
   listOpenPullRequestsWithoutCommitment,
   listOpenTrackedPullRequests,
+  listRecentlyClosedTrackedPullRequests,
   prisma,
   upsertTrackedPullRequest,
 } from "../index";
@@ -164,5 +165,64 @@ describe("closeTrackedPullRequestIfPresent", () => {
     await expect(
       closeTrackedPullRequestIfPresent({ artifactId: artifact.id, state: "closed", at: SEEN }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("listRecentlyClosedTrackedPullRequests", () => {
+  // The agent merges a PR, then looks again a turn later. Without this the PR
+  // is simply gone from every list it can read, so it concludes the merge never
+  // happened and walks back something the user watched succeed.
+  it("still reports a PR the agent merged a moment ago", async () => {
+    const user = await makeUser("recentmerged");
+    const artifact = await makePR(user.id, "PR_91", 91);
+    await closeTrackedPullRequest({ artifactId: artifact.id, state: "merged", at: SEEN });
+
+    const recent = await listRecentlyClosedTrackedPullRequests({
+      userId: user.id,
+      since: new Date(SEEN.getTime() - 60_000),
+    });
+
+    expect(recent.map((pr) => [pr.number, pr.state])).toEqual([[91, "merged"]]);
+  });
+
+  it("reports a closed PR as closed rather than merged", async () => {
+    const user = await makeUser("recentclosed");
+    const artifact = await makePR(user.id, "PR_90", 90);
+    await closeTrackedPullRequest({ artifactId: artifact.id, state: "closed", at: SEEN });
+
+    const [only] = await listRecentlyClosedTrackedPullRequests({
+      userId: user.id,
+      since: new Date(SEEN.getTime() - 60_000),
+    });
+
+    expect(only.state).toBe("closed");
+  });
+
+  // The window is what keeps "what did I merge" from becoming a changelog.
+  it("leaves out a PR closed before the window opens", async () => {
+    const user = await makeUser("recentstale");
+    const artifact = await makePR(user.id, "PR_10", 10);
+    await closeTrackedPullRequest({ artifactId: artifact.id, state: "merged", at: SEEN });
+
+    const recent = await listRecentlyClosedTrackedPullRequests({
+      userId: user.id,
+      since: new Date(SEEN.getTime() + 60_000),
+    });
+
+    expect(recent).toEqual([]);
+  });
+
+  it("does not reach another user's closed PRs", async () => {
+    const user = await makeUser("recentowner");
+    const intruder = await makeUser("recentintruder");
+    const artifact = await makePR(user.id, "PR_55", 55);
+    await closeTrackedPullRequest({ artifactId: artifact.id, state: "merged", at: SEEN });
+
+    const recent = await listRecentlyClosedTrackedPullRequests({
+      userId: intruder.id,
+      since: new Date(SEEN.getTime() - 60_000),
+    });
+
+    expect(recent).toEqual([]);
   });
 });
