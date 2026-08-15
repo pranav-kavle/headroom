@@ -40,6 +40,7 @@ export type { CommitmentRow } from "./commitments";
 export {
   createProposedAction,
   findApprovableAction,
+  findRecentlyExecutedAction,
   listActions,
   markActionExecuted,
   markActionFailed,

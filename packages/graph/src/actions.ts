@@ -117,6 +117,43 @@ export async function findApprovableAction(input: {
   return approvable ?? null;
 }
 
+/**
+ * The same outward-facing call, already carried out.
+ *
+ * An approval is consumed by the action it approves, but a proposal is not the
+ * only thing a duplicate request leaves behind. Two requests for one "yep" each
+ * created a proposal; the first executed and sent the Slack message, the second
+ * found its sibling already spent and recorded a fresh offer nobody had asked
+ * for. The user's next words — "alright, thank you" — were a different
+ * utterance, so that leftover matched, and the message went out a second time.
+ *
+ * Retiring the leftovers would close that one path. Asking whether this exact
+ * call has already happened closes all of them, including a model that simply
+ * repeats itself, and it answers the more useful question besides: the agent
+ * gets told the send succeeded and when, instead of being told it needs
+ * approval for something it already did.
+ */
+export function findRecentlyExecutedAction(input: {
+  userId: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  executedAfter: Date;
+}): Promise<Action | null> {
+  return prisma.action.findFirst({
+    where: {
+      userId: input.userId,
+      kind: input.kind,
+      status: "executed",
+      payload: { equals: input.payload as Prisma.InputJsonObject },
+      executedAt: { gte: input.executedAfter },
+      // An undone action is not a completed one — whatever it did has been
+      // taken back, so asking for it again is a fresh request.
+      undoneAt: null,
+    },
+    orderBy: { executedAt: "desc" },
+  });
+}
+
 export function markActionExecuted(input: {
   id: string;
   externalRef?: string;

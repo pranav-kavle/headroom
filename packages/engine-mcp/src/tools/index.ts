@@ -73,6 +73,16 @@ export interface EngineContext {
     tier: ActionTier;
     payload: Record<string, unknown>;
   }) => Promise<{ approved: boolean; actionId?: string }>;
+  // Whether this exact outward-facing call has already been carried out.
+  // Asked before approval is even considered, because "already sent" is a
+  // different answer from "needs approval" and the gate owes the model the
+  // true one: a duplicate request that left an unconsumed offer behind used to
+  // make a second send look like a first. Absent means no completion is ever
+  // detected, which is the old behaviour — a repeated call runs again.
+  findCompletedAction?: (call: {
+    tool: string;
+    payload: Record<string, unknown>;
+  }) => Promise<{ ranAt: string; externalRef?: string } | null>;
   recordActionExecuted?: (actionId: string, output: unknown) => Promise<void>;
   recordActionFailed?: (actionId: string) => Promise<void>;
   // Slack's credential and message read-back. One field rather than two
