@@ -14,10 +14,12 @@ export type { ArtifactRow } from "./artifacts";
 export { upsertCapacitySignal } from "./capacity-signals";
 export type { CapacitySignalRow } from "./capacity-signals";
 export { getGoogleHealthToken, upsertGoogleHealthToken } from "./google-health-token";
-export type { GoogleHealthTokenRow } from "./google-health-token";
+export type { EncryptedTokenValue, GoogleHealthTokenRow } from "./google-health-token";
+export { getSlackToken, upsertSlackToken } from "./slack-token";
+export type { SlackTokenRow } from "./slack-token";
 export { ensureSelfPerson, resolvePerson } from "./people";
 export type { PersonRow } from "./people";
-export { listConnectorCursors, upsertConnectorCursor } from "./connectors";
+export { getConnectorCursor, listConnectorCursors, upsertConnectorCursor } from "./connectors";
 export type { ConnectorCursorRow } from "./connectors";
 export {
   closeCommitment,

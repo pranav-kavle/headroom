@@ -116,3 +116,9 @@ export const GoogleHealthSyncResponse = z.object({
   pointsSynced: z.number(),
 });
 export type GoogleHealthSyncResponse = z.infer<typeof GoogleHealthSyncResponse>;
+
+export const SlackSyncResponse = z.object({
+  channelsScanned: z.number(),
+  messagesSynced: z.number(),
+});
+export type SlackSyncResponse = z.infer<typeof SlackSyncResponse>;

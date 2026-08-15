@@ -6,3 +6,7 @@ export { syncGoogleCalendar } from "./google-calendar/sync";
 export type { GoogleCalendarSyncSummary } from "./google-calendar/sync";
 export { syncGoogleHealth } from "./google-health/sync";
 export type { GoogleHealthSyncSummary } from "./google-health/sync";
+export { syncSlack } from "./slack/sync";
+export type { SlackSyncSummary } from "./slack/sync";
+export { sendSlackMessage, SLACK_SEND_TIER } from "./slack/actions";
+export type { SentSlackMessage } from "./slack/actions";

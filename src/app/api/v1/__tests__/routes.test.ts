@@ -8,6 +8,7 @@ import {
   GoogleHealthSyncResponse,
   HealthResponse,
   MeResponse,
+  SlackSyncResponse,
   UsersResponse,
 } from "@headroom/contracts";
 import { recordTurn, resetTurns } from "@/lib/agent-turns";
@@ -33,6 +34,12 @@ const resolveGoogleClientCredentials = vi.fn();
 const exchangeGoogleHealthCode = vi.fn();
 const getValidGoogleHealthAccessToken = vi.fn();
 const saveGoogleHealthToken = vi.fn();
+const syncSlack = vi.fn();
+const buildSlackAuthorizeUrl = vi.fn();
+const resolveSlackClientCredentials = vi.fn();
+const exchangeSlackCode = vi.fn();
+const getSlackCredentials = vi.fn();
+const saveSlackToken = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getOrCreateUser: () => getOrCreateUser() }));
 vi.mock("@headroom/graph", () => ({
@@ -70,6 +77,17 @@ vi.mock("@headroom/integrations", () => ({
   syncGithub: (input: unknown) => syncGithub(input),
   syncGoogleCalendar: (input: unknown) => syncGoogleCalendar(input),
   syncGoogleHealth: (input: unknown) => syncGoogleHealth(input),
+  syncSlack: (input: unknown) => syncSlack(input),
+}));
+vi.mock("@/lib/slack-oauth", () => ({
+  SLACK_STATE_COOKIE: "slack_oauth_state",
+  buildSlackAuthorizeUrl: (input: unknown) => buildSlackAuthorizeUrl(input),
+  resolveSlackClientCredentials: () => resolveSlackClientCredentials(),
+  exchangeSlackCode: (input: unknown) => exchangeSlackCode(input),
+}));
+vi.mock("@/lib/slack-token", () => ({
+  getSlackCredentials: (userId: string) => getSlackCredentials(userId),
+  saveSlackToken: (input: unknown) => saveSlackToken(input),
 }));
 
 const USER_ROW = {
@@ -867,5 +885,191 @@ describe("GET /api/v1/integrations/google-health/callback", () => {
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain("/controls");
     expect(saveGoogleHealthToken).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v1/integrations/slack/sync", () => {
+  it("returns 401 when signed out", async () => {
+    getOrCreateUser.mockResolvedValue(null);
+    const { POST } = await import("../integrations/slack/sync/route");
+
+    expect((await POST()).status).toBe(401);
+  });
+
+  it("returns 400 when Slack is not connected yet", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    getSlackCredentials.mockResolvedValue(null);
+    const { POST } = await import("../integrations/slack/sync/route");
+
+    const response = await POST();
+
+    expect(response.status).toBe(400);
+    expect(syncSlack).not.toHaveBeenCalled();
+  });
+
+  it("syncs and returns the summary when connected", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    getSlackCredentials.mockResolvedValue({
+      accessToken: "xoxp-live",
+      teamId: "T04AB",
+      slackUserId: "USELF",
+    });
+    syncSlack.mockResolvedValue({ channelsScanned: 4, messagesSynced: 12 });
+    const { POST } = await import("../integrations/slack/sync/route");
+
+    const response = await POST();
+    const body = SlackSyncResponse.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ channelsScanned: 4, messagesSynced: 12 });
+    expect(syncSlack).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: USER_ROW.id, token: "xoxp-live", slackUserId: "USELF" }),
+    );
+  });
+
+  it("returns 502 when the sync itself fails", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    getSlackCredentials.mockResolvedValue({
+      accessToken: "xoxp-live",
+      teamId: "T04AB",
+      slackUserId: "USELF",
+    });
+    syncSlack.mockRejectedValue(new Error("Slack conversations.history failed: invalid_auth"));
+    const { POST } = await import("../integrations/slack/sync/route");
+
+    expect((await POST()).status).toBe(502);
+  });
+});
+
+describe("GET /api/v1/integrations/slack/authorize", () => {
+  it("redirects to sign-in when signed out", async () => {
+    getOrCreateUser.mockResolvedValue(null);
+    const { GET } = await import("../integrations/slack/authorize/route");
+
+    const response = await GET(new NextRequest("http://localhost/api/v1/integrations/slack/authorize"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/sign-in");
+  });
+
+  it("redirects to the built authorize URL and sets the state cookie", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveSlackClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    buildSlackAuthorizeUrl.mockReturnValue("https://slack.com/oauth/v2/authorize?mock=1");
+    const { GET } = await import("../integrations/slack/authorize/route");
+
+    const response = await GET(new NextRequest("http://localhost/api/v1/integrations/slack/authorize"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("https://slack.com/oauth/v2/authorize?mock=1");
+    expect(buildSlackAuthorizeUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: "client-123",
+        redirectUri: "http://localhost/api/v1/integrations/slack/callback",
+      }),
+    );
+    const cookie = response.cookies.get("slack_oauth_state");
+    expect(cookie?.value).toBeTruthy();
+    expect(cookie?.value).toBe(buildSlackAuthorizeUrl.mock.calls[0][0].state);
+  });
+
+  it("builds an HTTPS redirect_uri from forwarded headers behind a TLS-terminating proxy", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveSlackClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    buildSlackAuthorizeUrl.mockReturnValue("https://slack.com/oauth/v2/authorize?mock=1");
+    const { GET } = await import("../integrations/slack/authorize/route");
+
+    // Same proxy shape that broke Google Health's redirect_uri in production
+    // on 2026-08-15 — Slack likewise rejects a redirect_uri that doesn't
+    // match what's registered, so the origin has to come from the headers.
+    await GET(
+      new NextRequest("http://internal-container:3000/api/v1/integrations/slack/authorize", {
+        headers: { "x-forwarded-proto": "https", "x-forwarded-host": "headroom.apps.human-angle.com" },
+      }),
+    );
+
+    expect(buildSlackAuthorizeUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        redirectUri: "https://headroom.apps.human-angle.com/api/v1/integrations/slack/callback",
+      }),
+    );
+  });
+});
+
+describe("GET /api/v1/integrations/slack/callback", () => {
+  function slackCallbackRequest(query: string, cookieState?: string) {
+    return new NextRequest(`http://localhost/api/v1/integrations/slack/callback${query}`, {
+      headers: cookieState ? { cookie: `slack_oauth_state=${cookieState}` } : {},
+    });
+  }
+
+  it("redirects to sign-in when signed out", async () => {
+    getOrCreateUser.mockResolvedValue(null);
+    const { GET } = await import("../integrations/slack/callback/route");
+
+    const response = await GET(slackCallbackRequest("?code=abc&state=xyz", "xyz"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/sign-in");
+  });
+
+  it("redirects to /controls without exchanging when state doesn't match the cookie", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    const { GET } = await import("../integrations/slack/callback/route");
+
+    const response = await GET(slackCallbackRequest("?code=abc&state=xyz", "different-state"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/controls");
+    expect(exchangeSlackCode).not.toHaveBeenCalled();
+  });
+
+  it("redirects to /controls without exchanging when the user denied the install", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    const { GET } = await import("../integrations/slack/callback/route");
+
+    const response = await GET(slackCallbackRequest("?state=xyz&error=access_denied", "xyz"));
+
+    expect(response.status).toBe(307);
+    expect(exchangeSlackCode).not.toHaveBeenCalled();
+  });
+
+  it("exchanges the code and stores the user token when state matches", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveSlackClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    exchangeSlackCode.mockResolvedValue({
+      accessToken: "xoxp-new",
+      teamId: "T04AB",
+      slackUserId: "USELF",
+    });
+    saveSlackToken.mockResolvedValue(undefined);
+    const { GET } = await import("../integrations/slack/callback/route");
+
+    const response = await GET(slackCallbackRequest("?code=auth-code-1&state=xyz", "xyz"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/controls");
+    expect(exchangeSlackCode).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "auth-code-1", clientId: "client-123", clientSecret: "secret-abc" }),
+    );
+    expect(saveSlackToken).toHaveBeenCalledWith({
+      userId: USER_ROW.id,
+      accessToken: "xoxp-new",
+      teamId: "T04AB",
+      slackUserId: "USELF",
+    });
+  });
+
+  it("still redirects to /controls when the exchange fails", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveSlackClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    exchangeSlackCode.mockRejectedValue(new Error("Slack token exchange failed: invalid_code"));
+    const { GET } = await import("../integrations/slack/callback/route");
+
+    const response = await GET(slackCallbackRequest("?code=bad&state=xyz", "xyz"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/controls");
+    expect(saveSlackToken).not.toHaveBeenCalled();
   });
 });

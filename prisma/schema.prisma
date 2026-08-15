@@ -51,6 +51,7 @@ model User {
   labels           Label[]
   connectorCursors ConnectorCursor[]
   googleHealthToken GoogleHealthToken?
+  slackToken        SlackToken?
 
   @@map("user")
 }
@@ -137,6 +138,7 @@ enum IdentityKind {
   github
   phone
   spoken_name
+  slack
 }
 
 enum ArtifactSource {
@@ -145,6 +147,7 @@ enum ArtifactSource {
   calendar
   voice_note
   google_health
+  slack
 }
 
 enum CommitmentDirection {
@@ -415,6 +418,27 @@ model GoogleHealthToken {
   user User @relation(fields: [userId], references: [id])
 
   @@map("google_health_token")
+}
+
+// Slack user tokens (xoxp-) don't expire unless token rotation is turned on
+// for the app, so unlike Google Health there's no refresh grant and no
+// expiresAt — the stored token stays valid until revoked. Still encrypted at
+// rest: a user token carries DM read access, which is the most sensitive
+// grant any integration here holds. 2026-08-15 spec §2.
+//
+// teamId backs permalink construction (spec §4) and slackUserId lets ingest
+// tell the user's own messages from everyone else's without a users.info call.
+model SlackToken {
+  id          String   @id @default(uuid())
+  userId      String   @unique @map("user_id")
+  accessToken Json     @map("access_token")
+  teamId      String   @map("team_id")
+  slackUserId String   @map("slack_user_id")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("slack_token")
 }
 
 // ---------------------------------------------------------------------------
