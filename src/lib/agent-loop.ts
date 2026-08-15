@@ -65,6 +65,14 @@ export interface BlockedCall {
   policy: ActionPolicy;
 }
 
+// An outward-facing action that actually ran this turn, because the user had
+// already been offered it and came back to confirm.
+export interface ExecutedCall {
+  tool: string;
+  tier: ActionTier;
+  actionId: string;
+}
+
 export interface AgentTurnResult {
   // 2026-08-13 spec §2. Everything below belongs to *this* turn and can be
   // found again by this id — which is what citations, the policy record, and
@@ -74,6 +82,7 @@ export interface AgentTurnResult {
   citations: Citation[];
   toolCalls: string[];
   blocked: BlockedCall[];
+  executed: ExecutedCall[];
   violations: Violation[];
   refused: boolean;
   timings: { totalMs: number; turns: TurnTiming[] };
@@ -148,6 +157,9 @@ export async function runAgentTurn(input: {
   context: EngineContext;
   client: MessageCreator;
   tools?: EngineTool[];
+  // Supplied when the caller has already opened an AgentRun under this id, so
+  // the turn record and the run's Actions agree on one identifier.
+  turnId?: string;
 }): Promise<AgentTurnResult> {
   const tools = input.tools ?? engineTools();
   const base = buildTurnParams({
@@ -163,8 +175,9 @@ export async function runAgentTurn(input: {
   const turns: TurnTiming[] = [];
   const toolCalls: string[] = [];
   const blocked: BlockedCall[] = [];
+  const executed: ExecutedCall[] = [];
   const startedAt = Date.now();
-  const turnId = randomUUID();
+  const turnId = input.turnId ?? randomUUID();
   let lastText = "";
 
   // Everything this turn is entitled to have taken a figure from: the resolved
@@ -193,6 +206,7 @@ export async function runAgentTurn(input: {
       citations: withheld ? [] : citations,
       toolCalls,
       blocked,
+      executed,
       violations,
       refused: options.refused ?? false,
       timings: { totalMs: Date.now() - startedAt, turns },
@@ -235,6 +249,10 @@ export async function runAgentTurn(input: {
     const results = [];
     for (const call of toolUses) {
       const tool = tools.find((t) => t.name === call.name);
+      // Set when this call is the execution of an approved offer, so the
+      // action can be marked executed — or failed, in the catch — once the
+      // handler returns. Declared out here so both branches can see it.
+      let approvedActionId: string | undefined;
       try {
         if (!tool) throw new Error(`Unknown tool: ${call.name}`);
         toolCalls.push(tool.name);
@@ -247,30 +265,68 @@ export async function runAgentTurn(input: {
           const policy = getActionPolicy(tool.tier, {
             tier1Unattended: input.context.tier1Unattended,
           });
-          if (policy !== "allowed") {
+
+          if (policy === "forbidden") {
             blocked.push({ tool: tool.name, tier: tool.tier, policy });
             results.push({
               type: "tool_result",
               tool_use_id: call.id,
-              // Handed back as data rather than an error: the model's job now
-              // is to offer, or to say it cannot — not to retry.
               content: JSON.stringify({
                 executed: false,
                 policy,
                 tier: tool.tier,
-                explanation:
-                  policy === "needs_approval"
-                    ? "This action needs the user's approval before it can run. Offer it; do not claim it is done."
-                    : "This action cannot be run at all. Say so plainly; do not offer it.",
+                explanation: "This action cannot be run at all. Say so plainly; do not offer it.",
               }),
             });
             continue;
+          }
+
+          if (policy === "needs_approval") {
+            // §8's "one tap": the tap is the user coming back and asking
+            // again. The first call records the offer; a later identical call
+            // is the confirmation, and only then does the handler run. The
+            // engine decides this — not the model, which cannot see whether an
+            // approval exists and cannot fabricate one, because a proposal
+            // made during this same run is excluded from the match.
+            const approval = await input.context.resolveApproval?.({
+              tool: tool.name,
+              tier: tool.tier,
+              payload: call.input ?? {},
+            });
+
+            if (!approval?.approved) {
+              blocked.push({ tool: tool.name, tier: tool.tier, policy });
+              results.push({
+                type: "tool_result",
+                tool_use_id: call.id,
+                // Handed back as data rather than an error: the model's job now
+                // is to offer, or to say it cannot — not to retry.
+                content: JSON.stringify({
+                  executed: false,
+                  policy,
+                  tier: tool.tier,
+                  explanation:
+                    "This action needs the user's approval before it can run. Offer it and ask them to confirm; do not claim it is done. If they confirm, call this tool again with exactly the same arguments.",
+                }),
+              });
+              continue;
+            }
+
+            approvedActionId = approval.actionId;
           }
         }
 
         if (tool.aboutUser) aboutUser = true;
 
         const output = await tool.handler(call.input ?? {}, input.context);
+
+        // Only after the handler returns: the Ledger records what happened,
+        // not what was attempted.
+        if (approvedActionId) {
+          await input.context.recordActionExecuted?.(approvedActionId, output);
+          executed.push({ tool: tool.name, tier: tool.tier as ActionTier, actionId: approvedActionId });
+        }
+
         collectCitations(output, citations);
         const serialized = JSON.stringify(output);
         evidence.push(serialized);
@@ -280,6 +336,9 @@ export async function runAgentTurn(input: {
           content: serialized,
         });
       } catch (error) {
+        if (approvedActionId) {
+          await input.context.recordActionFailed?.(approvedActionId);
+        }
         // Hand the failure back so the model can recover or say so, rather than
         // dropping the turn — the user is mid-conversation.
         results.push({

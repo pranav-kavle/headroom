@@ -1,10 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   closeTrackedPullRequestIfPresent,
+  createProposedAction,
+  findApprovableAction,
   findArtifactById,
+  finishAgentRun,
   listCommitments,
   listRecentArtifactsBySource,
+  markActionExecuted,
+  markActionFailed,
+  startAgentRun,
 } from "@headroom/graph";
 import { verifyThinkToken, type ThinkTokenClaims } from "@/lib/agent-think-auth";
 import { resolveAnthropicApiKey } from "@/lib/agent";
@@ -22,6 +29,24 @@ import {
 } from "@/lib/openai-compat";
 
 const SSE_HEADERS = { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" };
+
+// How long an unanswered Tier 2 offer stays confirmable. Long enough to cover
+// "hang on — yes, do it" inside one conversation, short enough that an offer
+// the user talked past is not still live later on.
+const APPROVAL_WINDOW_MS = 15 * 60 * 1000;
+
+// The link that makes a Ledger entry checkable rather than just a claim that
+// something ran. Each Tier 2 tool names its link differently — comment_on_pr
+// returns `commentUrl`, close/merge return `url`, send_slack_message returns
+// `permalink` — so they are read in one place instead of the Ledger silently
+// showing no evidence for whichever tool was added last.
+function externalRefOf(output: unknown): string | undefined {
+  const result = output as { commentUrl?: unknown; url?: unknown; permalink?: unknown } | null;
+  for (const candidate of [result?.commentUrl, result?.url, result?.permalink]) {
+    if (typeof candidate === "string" && candidate) return candidate;
+  }
+  return undefined;
+}
 
 // Deepgram Voice Agent's `think` step, wearing an OpenAI chat-completions mask
 // — design doc 2026-08-12-deepgram-voice-agent-design.md §2/§5. Deepgram calls
@@ -97,7 +122,20 @@ export async function POST(request: NextRequest) {
     console.warn("[think] Slack token lookup failed", error);
   }
 
+  // The turn's orchestration row. An Action can't exist without one, which is
+  // why the Ledger was empty — so this is what makes an outward-facing action
+  // recordable at all. A failure here must not cost the user their turn, so it
+  // degrades to no approval path rather than a 500.
+  const turnId = randomUUID();
+  let agentRunId: string | undefined;
+  try {
+    agentRunId = (await startAgentRun({ userId, turnId, payload: { transcript }, at: now })).id;
+  } catch (error) {
+    console.error("[think] could not open an agent run — Tier 2 approvals unavailable this turn", error);
+  }
+
   const result = await runAgentTurn({
+    turnId,
     // Spec §5: the whole conversation, not just the latest line.
     messages: toTurnMessages(body),
     principal,
@@ -114,6 +152,30 @@ export async function POST(request: NextRequest) {
       getArtifactById: (id) => findArtifactById(id, userId),
       markPullRequestClosed: (artifactId, state) =>
         closeTrackedPullRequestIfPresent({ artifactId, state, at: now }),
+      // §8's one tap. First time a Tier 2 call arrives it is recorded as an
+      // offer and refused; when the user comes back and it arrives again —
+      // same tool, byte-identical arguments, a different run — that is the
+      // confirmation, and it executes. Excluding this run is what stops the
+      // model proposing and consuming its own offer inside one turn.
+      resolveApproval: agentRunId
+        ? async ({ tool, tier, payload }) => {
+            const approvable = await findApprovableAction({
+              userId,
+              kind: tool,
+              payload,
+              excludeAgentRunId: agentRunId,
+              proposedAfter: new Date(now.getTime() - APPROVAL_WINDOW_MS),
+            });
+            if (approvable) return { approved: true, actionId: approvable.id };
+
+            await createProposedAction({ userId, agentRunId, tier, kind: tool, payload });
+            return { approved: false };
+          }
+        : undefined,
+      recordActionExecuted: async (actionId, output) => {
+        await markActionExecuted({ id: actionId, externalRef: externalRefOf(output), at: new Date() });
+      },
+      recordActionFailed: (actionId) => markActionFailed(actionId).then(() => undefined),
       // §16's live lookups (get_weather/get_events/get_flight_status). If
       // unset, the tool itself throws a named "key not configured" error
       // rather than this route failing the whole turn up front.
@@ -131,6 +193,12 @@ export async function POST(request: NextRequest) {
   });
 
   const artifact = await captured;
+
+  if (agentRunId) {
+    await finishAgentRun({ id: agentRunId, status: "ok", at: new Date() }).catch((error) =>
+      console.warn("[think] could not close the agent run", error),
+    );
+  }
 
   // 2026-08-13 spec §2. One record per turn, carrying everything that turn did
   // — what was spoken, what backs it, what ran, what the policy gate refused

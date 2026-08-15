@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import type { EngineContext, EngineTool } from "@headroom/engine-mcp";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { engineTools, type EngineContext, type EngineTool } from "@headroom/engine-mcp";
 import { runAgentTurn, type MessageCreator } from "../agent-loop";
 
 const PRINCIPAL = { displayName: "Priya", role: null, timezone: "America/Chicago" };
@@ -495,5 +495,224 @@ describe("runAgentTurn", () => {
 
     expect(result.timings.totalMs).toBeGreaterThanOrEqual(0);
     expect(result.timings.turns.length).toBe(2);
+  });
+});
+
+// §8's "one tap". Before this existed, a Tier 2 call was refused and the
+// refusal was the end of it — the user could say "go for it" and nothing
+// could ever run, because approval had nowhere to be recorded.
+describe("Tier 2 approval", () => {
+  let posted: string[];
+  let tier2Tool: EngineTool;
+
+  beforeEach(() => {
+    posted = [];
+    tier2Tool = {
+      name: "comment_on_pr",
+      description: "test",
+      inputSchema: { type: "object" },
+      tier: "tier_2",
+      handler: async (input) => {
+        posted.push(String(input.body));
+        return { commentUrl: "https://github.com/acme/repo/pull/82#issuecomment-1" };
+      },
+    };
+  });
+
+  it("refuses and records an offer the first time, without running the handler", async () => {
+    const proposals: unknown[] = [];
+
+    const result = await runAgentTurn({
+      messages: [{ role: "user", content: "comment on the PR" }],
+      principal: PRINCIPAL,
+      context: {
+        ...CONTEXT,
+        resolveApproval: async (call) => {
+          proposals.push(call);
+          return { approved: false };
+        },
+      },
+      client: creator(toolReply("comment_on_pr", { body: "demo successful" }), textReply("Want me to?")),
+      tools: [tier2Tool],
+    });
+
+    expect(posted).toEqual([]);
+    expect(proposals).toHaveLength(1);
+    expect(result.blocked).toEqual([
+      { tool: "comment_on_pr", tier: "tier_2", policy: "needs_approval" },
+    ]);
+    expect(result.executed).toEqual([]);
+  });
+
+  it("runs the handler once the same call comes back approved", async () => {
+    const result = await runAgentTurn({
+      messages: [{ role: "user", content: "yeah, go for it" }],
+      principal: PRINCIPAL,
+      context: {
+        ...CONTEXT,
+        resolveApproval: async () => ({ approved: true, actionId: "action-1" }),
+      },
+      client: creator(toolReply("comment_on_pr", { body: "demo successful" }), textReply("Posted.")),
+      tools: [tier2Tool],
+    });
+
+    expect(posted).toEqual(["demo successful"]);
+    expect(result.blocked).toEqual([]);
+    expect(result.executed).toEqual([
+      { tool: "comment_on_pr", tier: "tier_2", actionId: "action-1" },
+    ]);
+  });
+
+  it("marks the action executed only after the handler returns", async () => {
+    const order: string[] = [];
+
+    await runAgentTurn({
+      messages: [{ role: "user", content: "go" }],
+      principal: PRINCIPAL,
+      context: {
+        ...CONTEXT,
+        resolveApproval: async () => ({ approved: true, actionId: "action-1" }),
+        recordActionExecuted: async () => {
+          order.push("recorded");
+        },
+      },
+      client: creator(toolReply("comment_on_pr", { body: "x" }), textReply("Posted.")),
+      tools: [
+        {
+          ...tier2Tool,
+          handler: async () => {
+            order.push("posted");
+            return { commentUrl: "u" };
+          },
+        },
+      ],
+    });
+
+    expect(order).toEqual(["posted", "recorded"]);
+  });
+
+  it("marks the action failed when GitHub rejects it, rather than executed", async () => {
+    const failed: string[] = [];
+
+    const result = await runAgentTurn({
+      messages: [{ role: "user", content: "go" }],
+      principal: PRINCIPAL,
+      context: {
+        ...CONTEXT,
+        resolveApproval: async () => ({ approved: true, actionId: "action-1" }),
+        recordActionExecuted: async () => {
+          throw new Error("should not be called");
+        },
+        recordActionFailed: async (id) => {
+          failed.push(id);
+        },
+      },
+      client: creator(toolReply("comment_on_pr", {}), textReply("That didn't work.")),
+      tools: [{ ...tier2Tool, handler: async () => Promise.reject(new Error("422 unprocessable")) }],
+      });
+
+    expect(failed).toEqual(["action-1"]);
+    expect(result.executed).toEqual([]);
+  });
+
+  // Tier 3 and 4 are forbidden outright — no offer, no approval, ever.
+  it("never offers a forbidden action an approval path", async () => {
+    let asked = false;
+
+    const result = await runAgentTurn({
+      messages: [{ role: "user", content: "buy it" }],
+      principal: PRINCIPAL,
+      context: {
+        ...CONTEXT,
+        resolveApproval: async () => {
+          asked = true;
+          return { approved: true, actionId: "action-1" };
+        },
+      },
+      client: creator(toolReply("buy_thing", {}), textReply("I can't do that.")),
+      tools: [{ ...tier2Tool, name: "buy_thing", tier: "tier_3" }],
+    });
+
+    expect(asked).toBe(false);
+    expect(posted).toEqual([]);
+    expect(result.blocked[0].policy).toBe("forbidden");
+  });
+
+  // The gate is tool-agnostic, so Slack's send rides the same path as
+  // GitHub's. Proved with the real tool rather than a stand-in, because
+  // "it should work too" is exactly the assumption worth checking.
+  it("holds and then releases the real send_slack_message tool", async () => {
+    const sends: Array<Record<string, unknown>> = [];
+    const slackSend = engineTools().find((t) => t.name === "send_slack_message");
+    if (!slackSend) throw new Error("send_slack_message is not registered");
+
+    const slackContext: EngineContext = {
+      ...CONTEXT,
+      slackCredentials: { accessToken: "xoxp-test", slackUserId: "U1" },
+      fetchImpl: (async (url: string | URL, init?: RequestInit) => {
+        // Only the send itself is recorded — the follow-up team.info lookup
+        // that builds the permalink is not the thing under test.
+        if (String(url).includes("chat.postMessage")) {
+          // Slack's Web API takes form encoding, not JSON.
+          sends.push(Object.fromEntries(new URLSearchParams(String(init?.body ?? ""))));
+        }
+        return new Response(
+          JSON.stringify({ ok: true, ts: "1723.45", channel: "C1", team: { domain: "acme" } }),
+        );
+      }) as typeof fetch,
+    };
+
+    const held = await runAgentTurn({
+      messages: [{ role: "user", content: "tell the team it shipped" }],
+      principal: PRINCIPAL,
+      context: { ...slackContext, resolveApproval: async () => ({ approved: false }) },
+      client: creator(
+        toolReply("send_slack_message", { channel: "C1", text: "it shipped" }),
+        textReply("Want me to send that?"),
+      ),
+      tools: [slackSend],
+    });
+
+    expect(sends).toEqual([]);
+    expect(held.blocked[0]).toEqual({
+      tool: "send_slack_message",
+      tier: "tier_2",
+      policy: "needs_approval",
+    });
+
+    const released = await runAgentTurn({
+      messages: [{ role: "user", content: "yes, send it" }],
+      principal: PRINCIPAL,
+      context: {
+        ...slackContext,
+        resolveApproval: async () => ({ approved: true, actionId: "action-9" }),
+      },
+      client: creator(
+        toolReply("send_slack_message", { channel: "C1", text: "it shipped" }),
+        textReply("Sent."),
+      ),
+      tools: [slackSend],
+    });
+
+    expect(sends).toHaveLength(1);
+    expect(sends[0]).toMatchObject({ channel: "C1", text: "it shipped" });
+    expect(released.executed).toEqual([
+      { tool: "send_slack_message", tier: "tier_2", actionId: "action-9" },
+    ]);
+  });
+
+
+  // Without a resolver wired in, the old behaviour must hold exactly.
+  it("blocks as before when no approval path is configured", async () => {
+    const result = await runAgentTurn({
+      messages: [{ role: "user", content: "comment on the PR" }],
+      principal: PRINCIPAL,
+      context: CONTEXT,
+      client: creator(toolReply("comment_on_pr", { body: "x" }), textReply("Want me to?")),
+      tools: [tier2Tool],
+    });
+
+    expect(posted).toEqual([]);
+    expect(result.blocked).toHaveLength(1);
   });
 });
