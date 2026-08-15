@@ -1,10 +1,20 @@
-export type { ArtifactSource, CommitmentDirection, DuePrecision, IdentityKind } from "./generated/prisma/client";
+export type {
+  ArtifactSource,
+  CapacitySignalKind,
+  CommitmentDirection,
+  DuePrecision,
+  IdentityKind,
+} from "./generated/prisma/client";
 export { prisma, pingDatabase } from "./client";
 export type { PrismaClient } from "./client";
 export { completeOnboarding, createUser, findUserByClerkId, listUsers } from "./users";
 export type { OnboardingInput, UserRow } from "./users";
 export { createArtifact, findArtifactBySourceExternalId } from "./artifacts";
 export type { ArtifactRow } from "./artifacts";
+export { upsertCapacitySignal } from "./capacity-signals";
+export type { CapacitySignalRow } from "./capacity-signals";
+export { getGoogleHealthToken, upsertGoogleHealthToken } from "./google-health-token";
+export type { GoogleHealthTokenRow } from "./google-health-token";
 export { ensureSelfPerson, resolvePerson } from "./people";
 export type { PersonRow } from "./people";
 export { listConnectorCursors, upsertConnectorCursor } from "./connectors";

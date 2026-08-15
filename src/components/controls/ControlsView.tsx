@@ -64,10 +64,16 @@ export function ControlsView({
   email,
   name,
   sources,
+  googleHealthConnected,
 }: {
   email: string;
   name: string;
   sources: ConnectorCursorRow[];
+  // Health's OAuth token lives in our own GoogleHealthToken table, not on
+  // Clerk's Google connection (2026-08-14 spec §9a) — so unlike Calendar,
+  // this can't be read off `user.externalAccounts` client-side. It has to
+  // come down as a prop from the server, same as `sources`.
+  googleHealthConnected: boolean;
 }) {
   const { signOut } = useClerk();
   const { user } = useUser();
@@ -75,6 +81,24 @@ export function ControlsView({
   const githubConnected = user?.externalAccounts?.some((account) => account.provider === "github") ?? false;
   const [githubSyncing, setGithubSyncing] = useState(false);
   const [githubSyncError, setGithubSyncError] = useState<string | null>(null);
+
+  // Calendar still shares Clerk's Google social connection — Clerk stacks
+  // additionalScopes onto the same external account. Checking the provider
+  // alone isn't enough: sign-in already connects Google with only
+  // email/profile scopes, so this checks for calendar's own scope being
+  // present in approvedScopes, not just that a Google account exists —
+  // otherwise it reads as "connected" when the token can't actually reach
+  // Calendar at all. Health can't use this connection at all (spec §9a —
+  // its API rejects tokens carrying any other scope, including Clerk's
+  // baseline ones) so its connected state comes down as a prop instead.
+  const googleAccount = user?.externalAccounts?.find((account) => account.provider === "google");
+  const hasGoogleScope = (scope: string) => googleAccount?.approvedScopes?.split(" ").includes(scope) ?? false;
+  const googleCalendarConnected = hasGoogleScope("https://www.googleapis.com/auth/calendar.readonly");
+  const [googleCalendarConnectError, setGoogleCalendarConnectError] = useState<string | null>(null);
+  const [googleCalendarSyncing, setGoogleCalendarSyncing] = useState(false);
+  const [googleCalendarSyncError, setGoogleCalendarSyncError] = useState<string | null>(null);
+  const [googleHealthSyncing, setGoogleHealthSyncing] = useState(false);
+  const [googleHealthSyncError, setGoogleHealthSyncError] = useState<string | null>(null);
 
   // Linking an external account is a sensitive operation — Clerk requires the
   // session to be freshly re-verified first and throws
@@ -85,6 +109,25 @@ export function ControlsView({
     return user.createExternalAccount({
       strategy: "oauth_github",
       additionalScopes: ["repo"],
+      redirectUrl: "/controls",
+    });
+  });
+
+  const GOOGLE_CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"];
+
+  // createExternalAccount only creates a brand-new provider connection —
+  // Clerk allows one account per provider, so calling it when Google is
+  // already connected (as it is for anyone who signed up with Google)
+  // fails with oauth_account_already_connected. Adding scopes to an
+  // existing connection is reauthorize() on the account itself instead.
+  const connectGoogleCalendarAccount = useReverification(() => {
+    if (!user) return undefined;
+    if (googleAccount) {
+      return googleAccount.reauthorize({ additionalScopes: GOOGLE_CALENDAR_SCOPES, redirectUrl: "/controls" });
+    }
+    return user.createExternalAccount({
+      strategy: "oauth_google",
+      additionalScopes: GOOGLE_CALENDAR_SCOPES,
       redirectUrl: "/controls",
     });
   });
@@ -123,6 +166,52 @@ export function ControlsView({
     router.refresh();
   }
 
+  async function connectGoogleCalendar() {
+    if (!user) return;
+    setGoogleCalendarConnectError(null);
+    try {
+      const account = await connectGoogleCalendarAccount();
+      const redirectUrl = account?.verification?.externalVerificationRedirectURL;
+      if (redirectUrl) {
+        window.location.href = redirectUrl.toString();
+      } else {
+        console.error("[controls/google-calendar] connect/reauthorize returned no redirect URL", account);
+        setGoogleCalendarConnectError("Couldn't start Google connection. Try again?");
+      }
+    } catch (error) {
+      if (isReverificationCancelledError(error)) return;
+      console.error("[controls/google-calendar] connect/reauthorize failed", error);
+      const message = isClerkAPIResponseError(error)
+        ? error.errors[0]?.longMessage ?? error.errors[0]?.message
+        : undefined;
+      setGoogleCalendarConnectError(message ?? "Couldn't start Google connection. Try again?");
+    }
+  }
+
+  async function syncGoogleCalendarNow() {
+    setGoogleCalendarSyncing(true);
+    setGoogleCalendarSyncError(null);
+    const response = await fetch("/api/v1/integrations/google-calendar/sync", { method: "POST" }).catch(() => null);
+    setGoogleCalendarSyncing(false);
+    if (!response?.ok) {
+      setGoogleCalendarSyncError("Sync failed. Try again?");
+      return;
+    }
+    router.refresh();
+  }
+
+  async function syncGoogleHealthNow() {
+    setGoogleHealthSyncing(true);
+    setGoogleHealthSyncError(null);
+    const response = await fetch("/api/v1/integrations/google-health/sync", { method: "POST" }).catch(() => null);
+    setGoogleHealthSyncing(false);
+    if (!response?.ok) {
+      setGoogleHealthSyncError("Sync failed. Try again?");
+      return;
+    }
+    router.refresh();
+  }
+
   const [tier1State, setTier1State] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(TIER_1_ACTIONS.map((action) => [action.key, action.defaultOn])),
   );
@@ -149,7 +238,18 @@ export function ControlsView({
           const cursor = sourceByKey.get(source.key);
           const { detail, warn, soon } = describeSource(cursor);
           const isGithub = source.key === "github";
-          const showConnected = isGithub && githubConnected;
+          const isGoogleCalendar = source.key === "calendar";
+          const isGoogleHealth = source.key === "google_health";
+          const googleRowConnected = isGoogleCalendar ? googleCalendarConnected : isGoogleHealth ? googleHealthConnected : false;
+          const showConnected = (isGithub && githubConnected) || ((isGoogleCalendar || isGoogleHealth) && googleRowConnected);
+          const syncError = isGithub
+            ? githubSyncError
+            : isGoogleCalendar
+              ? googleCalendarSyncError
+              : isGoogleHealth
+                ? googleHealthSyncError
+                : null;
+          const connectError = isGoogleCalendar ? googleCalendarConnectError : null;
 
           return (
             <div className={styles.arow} key={source.key}>
@@ -162,7 +262,8 @@ export function ControlsView({
                   {showConnected
                     ? (cursor ? detail : "Connected, not yet synced")
                     : detail}
-                  {isGithub && githubSyncError && ` — ${githubSyncError}`}
+                  {syncError && ` — ${syncError}`}
+                  {connectError && ` — ${connectError}`}
                 </em>
               </div>
               {isGithub ? (
@@ -179,6 +280,38 @@ export function ControlsView({
                   <button type="button" className={styles.actionpill} onClick={connectGithub}>
                     Connect
                   </button>
+                )
+              ) : isGoogleCalendar ? (
+                googleCalendarConnected ? (
+                  <button
+                    type="button"
+                    className={styles.actionpill}
+                    onClick={syncGoogleCalendarNow}
+                    disabled={googleCalendarSyncing}
+                  >
+                    {googleCalendarSyncing ? "Syncing…" : "Sync now"}
+                  </button>
+                ) : (
+                  <button type="button" className={styles.actionpill} onClick={connectGoogleCalendar}>
+                    Connect
+                  </button>
+                )
+              ) : isGoogleHealth ? (
+                googleHealthConnected ? (
+                  <button
+                    type="button"
+                    className={styles.actionpill}
+                    onClick={syncGoogleHealthNow}
+                    disabled={googleHealthSyncing}
+                  >
+                    {googleHealthSyncing ? "Syncing…" : "Sync now"}
+                  </button>
+                ) : (
+                  // A plain navigation, not a Clerk call — Health's OAuth
+                  // flow runs entirely outside Clerk (spec §9a).
+                  <a href="/api/v1/integrations/google-health/authorize" className={styles.actionpill}>
+                    Connect
+                  </a>
                 )
               ) : (
                 <>

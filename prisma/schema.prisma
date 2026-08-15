@@ -50,6 +50,7 @@ model User {
   actions          Action[]
   labels           Label[]
   connectorCursors ConnectorCursor[]
+  googleHealthToken GoogleHealthToken?
 
   @@map("user")
 }
@@ -395,6 +396,25 @@ model ConnectorCursor {
 
   @@unique([userId, source])
   @@map("connector_cursor")
+}
+
+// Google Health's API rejects any access token carrying a scope outside its
+// own family — including the baseline scopes Clerk bundles onto every Google
+// connection — so this is the one source whose token can't ride on Clerk's
+// per-user social connection. 2026-08-14 spec §9a. Both tokens are stored
+// as encryptToken()'s {encrypted, iv, authTag} bundle, not plaintext — this
+// is a live OAuth refresh token, not a value to leave sitting readable.
+model GoogleHealthToken {
+  id           String   @id @default(uuid())
+  userId       String   @unique @map("user_id")
+  accessToken  Json     @map("access_token")
+  refreshToken Json     @map("refresh_token")
+  expiresAt    DateTime @map("expires_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("google_health_token")
 }
 
 // ---------------------------------------------------------------------------

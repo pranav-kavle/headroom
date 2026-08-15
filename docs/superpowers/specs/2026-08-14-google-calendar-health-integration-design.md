@@ -202,6 +202,42 @@ Following the GitHub connector's own test shape
   type, absent-day skip behavior.
 - `src/lib/__tests__/google-token.test.ts` — mirrors `github-token.test.ts`.
 
+## 9a. Addendum (2026-08-14, post-implementation) — Health needs its own OAuth flow
+
+§2–3's premise — one shared Google connection, Clerk stacks scopes onto it —
+turned out wrong for Health specifically, discovered via live testing:
+Google's Health API rejects any access token that carries a scope outside
+its own family, including the baseline `openid`/`email`/`profile` scopes
+Clerk bundles onto every Google connection. There is no way to get a
+Clerk-managed token containing only Health scopes, and `getUserOauthAccessToken`
+has no scope-selection parameter. Calendar is unaffected — its API tolerates
+extra scopes on the token fine, so it keeps using Clerk exactly as specced.
+
+Health instead gets its own OAuth flow, independent of Clerk's Google social
+connection:
+
+- New `GoogleHealthToken` model (`packages/graph`): `userId`, `accessToken`,
+  `refreshToken`, `expiresAt`. This is the one exception to "Clerk holds
+  every token, we store nothing" — Health's token is scoped to exactly the
+  two Health scopes and nothing else, so it can't ride on Clerk's per-user
+  social connection at all.
+- `GET /api/v1/integrations/google-health/authorize` — redirects to Google's
+  authorization endpoint directly (our own client_id/secret, not Clerk's
+  managed flow), requesting only the two Health scopes, with a random
+  `state` nonce in a short-lived httpOnly cookie for CSRF protection.
+- `GET /api/v1/integrations/google-health/callback` — verifies `state`,
+  exchanges the returned `code` for tokens via a raw POST to Google's token
+  endpoint, upserts the row, redirects back to `/controls`.
+- A refresh helper checked before every sync: if the stored access token is
+  expired, use the stored refresh token to mint a new one before calling the
+  Health API.
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` move into this app's own env
+  (previously only Clerk's dashboard held them).
+- `ControlsView`'s Health row Connect button points at the new authorize
+  route instead of Clerk's `reauthorize()`; its connected-state check moves
+  from `approvedScopes` (Clerk) to whether a `GoogleHealthToken` row exists
+  (passed down as a prop from the Controls page, same pattern as `sources`).
+
 ## 10. Explicitly not built here
 
 - Anything that reads `CapacitySignal` rows (capacity strip, brief content) —

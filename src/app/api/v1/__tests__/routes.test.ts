@@ -4,6 +4,8 @@ import {
   AgentTokenResponse,
   AgentTurnsResponse,
   GithubSyncResponse,
+  GoogleCalendarSyncResponse,
+  GoogleHealthSyncResponse,
   HealthResponse,
   MeResponse,
   UsersResponse,
@@ -23,6 +25,14 @@ const verifyThinkToken = vi.fn();
 const runAgentTurn = vi.fn();
 const getGithubAccessToken = vi.fn();
 const syncGithub = vi.fn();
+const getGoogleAccessToken = vi.fn();
+const syncGoogleCalendar = vi.fn();
+const syncGoogleHealth = vi.fn();
+const buildGoogleHealthAuthorizeUrl = vi.fn();
+const resolveGoogleClientCredentials = vi.fn();
+const exchangeGoogleHealthCode = vi.fn();
+const getValidGoogleHealthAccessToken = vi.fn();
+const saveGoogleHealthToken = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getOrCreateUser: () => getOrCreateUser() }));
 vi.mock("@headroom/graph", () => ({
@@ -32,6 +42,16 @@ vi.mock("@headroom/graph", () => ({
   getCommitmentById: (id: string, userId: string) => getCommitmentById(id, userId),
   createArtifact: (input: unknown) => createArtifact(input),
   completeOnboarding: (userId: string, input: unknown) => completeOnboarding(userId, input),
+}));
+vi.mock("@/lib/google-health-oauth", () => ({
+  GOOGLE_HEALTH_STATE_COOKIE: "google_health_oauth_state",
+  buildGoogleHealthAuthorizeUrl: (input: unknown) => buildGoogleHealthAuthorizeUrl(input),
+  resolveGoogleClientCredentials: () => resolveGoogleClientCredentials(),
+  exchangeGoogleHealthCode: (input: unknown) => exchangeGoogleHealthCode(input),
+}));
+vi.mock("@/lib/google-health-token", () => ({
+  getValidGoogleHealthAccessToken: (input: unknown) => getValidGoogleHealthAccessToken(input),
+  saveGoogleHealthToken: (input: unknown) => saveGoogleHealthToken(input),
 }));
 vi.mock("@/lib/voice-agent-token", () => ({
   mintDeepgramAgentToken: () => mintDeepgramAgentToken(),
@@ -45,7 +65,12 @@ vi.mock("@/lib/agent-loop", () => ({
   runAgentTurn: (input: unknown) => runAgentTurn(input),
 }));
 vi.mock("@/lib/github-token", () => ({ getGithubAccessToken: (id: string) => getGithubAccessToken(id) }));
-vi.mock("@headroom/integrations", () => ({ syncGithub: (input: unknown) => syncGithub(input) }));
+vi.mock("@/lib/google-token", () => ({ getGoogleAccessToken: (id: string) => getGoogleAccessToken(id) }));
+vi.mock("@headroom/integrations", () => ({
+  syncGithub: (input: unknown) => syncGithub(input),
+  syncGoogleCalendar: (input: unknown) => syncGoogleCalendar(input),
+  syncGoogleHealth: (input: unknown) => syncGoogleHealth(input),
+}));
 
 const USER_ROW = {
   id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
@@ -615,5 +640,209 @@ describe("POST /api/v1/integrations/github/sync", () => {
     const { POST } = await import("../integrations/github/sync/route");
 
     expect((await POST()).status).toBe(502);
+  });
+});
+
+describe("POST /api/v1/integrations/google-calendar/sync", () => {
+  it("returns 401 when signed out", async () => {
+    getOrCreateUser.mockResolvedValue(null);
+    const { POST } = await import("../integrations/google-calendar/sync/route");
+
+    expect((await POST()).status).toBe(401);
+  });
+
+  it("returns 400 when Google is not connected yet", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    getGoogleAccessToken.mockResolvedValue(null);
+    const { POST } = await import("../integrations/google-calendar/sync/route");
+
+    const response = await POST();
+
+    expect(response.status).toBe(400);
+    expect(syncGoogleCalendar).not.toHaveBeenCalled();
+  });
+
+  it("syncs and returns the summary when connected", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    getGoogleAccessToken.mockResolvedValue("ya29_live");
+    syncGoogleCalendar.mockResolvedValue({ daysSynced: 8 });
+    const { POST } = await import("../integrations/google-calendar/sync/route");
+
+    const response = await POST();
+    const body = GoogleCalendarSyncResponse.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ daysSynced: 8 });
+    expect(syncGoogleCalendar).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: USER_ROW.id, token: "ya29_live" }),
+    );
+  });
+
+  it("returns 502 when the sync itself fails", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    getGoogleAccessToken.mockResolvedValue("ya29_live");
+    syncGoogleCalendar.mockRejectedValue(new Error("Google Calendar API error: rate limited"));
+    const { POST } = await import("../integrations/google-calendar/sync/route");
+
+    expect((await POST()).status).toBe(502);
+  });
+});
+
+describe("POST /api/v1/integrations/google-health/sync", () => {
+  it("returns 401 when signed out", async () => {
+    getOrCreateUser.mockResolvedValue(null);
+    const { POST } = await import("../integrations/google-health/sync/route");
+
+    expect((await POST()).status).toBe(401);
+  });
+
+  it("returns 400 when Google Health is not connected yet", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveGoogleClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    getValidGoogleHealthAccessToken.mockResolvedValue(null);
+    const { POST } = await import("../integrations/google-health/sync/route");
+
+    const response = await POST();
+
+    expect(response.status).toBe(400);
+    expect(syncGoogleHealth).not.toHaveBeenCalled();
+  });
+
+  it("syncs and returns the summary when connected", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveGoogleClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    getValidGoogleHealthAccessToken.mockResolvedValue("ya29_live");
+    syncGoogleHealth.mockResolvedValue({ pointsSynced: 3 });
+    const { POST } = await import("../integrations/google-health/sync/route");
+
+    const response = await POST();
+    const body = GoogleHealthSyncResponse.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ pointsSynced: 3 });
+    expect(syncGoogleHealth).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: USER_ROW.id, token: "ya29_live" }),
+    );
+  });
+
+  it("returns 502 when the sync itself fails", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveGoogleClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    getValidGoogleHealthAccessToken.mockResolvedValue("ya29_live");
+    syncGoogleHealth.mockRejectedValue(new Error("Google Health API error (sleep): rate limited"));
+    const { POST } = await import("../integrations/google-health/sync/route");
+
+    expect((await POST()).status).toBe(502);
+  });
+});
+
+describe("GET /api/v1/integrations/google-health/authorize", () => {
+  it("redirects to sign-in when signed out", async () => {
+    getOrCreateUser.mockResolvedValue(null);
+    const { GET } = await import("../integrations/google-health/authorize/route");
+
+    const response = await GET(new NextRequest("http://localhost/api/v1/integrations/google-health/authorize"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/sign-in");
+  });
+
+  it("redirects to the built authorize URL and sets the state cookie", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveGoogleClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    buildGoogleHealthAuthorizeUrl.mockReturnValue("https://accounts.google.com/o/oauth2/v2/auth?mock=1");
+    const { GET } = await import("../integrations/google-health/authorize/route");
+
+    const response = await GET(new NextRequest("http://localhost/api/v1/integrations/google-health/authorize"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("https://accounts.google.com/o/oauth2/v2/auth?mock=1");
+    expect(buildGoogleHealthAuthorizeUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: "client-123",
+        redirectUri: "http://localhost/api/v1/integrations/google-health/callback",
+      }),
+    );
+    const cookie = response.cookies.get("google_health_oauth_state");
+    expect(cookie?.value).toBeTruthy();
+    expect(cookie?.value).toBe(buildGoogleHealthAuthorizeUrl.mock.calls[0][0].state);
+  });
+});
+
+describe("GET /api/v1/integrations/google-health/callback", () => {
+  function callbackRequest(query: string, cookieState?: string) {
+    return new NextRequest(`http://localhost/api/v1/integrations/google-health/callback${query}`, {
+      headers: cookieState ? { cookie: `google_health_oauth_state=${cookieState}` } : {},
+    });
+  }
+
+  it("redirects to sign-in when signed out", async () => {
+    getOrCreateUser.mockResolvedValue(null);
+    const { GET } = await import("../integrations/google-health/callback/route");
+
+    const response = await GET(callbackRequest("?code=abc&state=xyz", "xyz"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/sign-in");
+  });
+
+  it("redirects to /controls without exchanging when state doesn't match the cookie", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    const { GET } = await import("../integrations/google-health/callback/route");
+
+    const response = await GET(callbackRequest("?code=abc&state=xyz", "different-state"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/controls");
+    expect(exchangeGoogleHealthCode).not.toHaveBeenCalled();
+  });
+
+  it("redirects to /controls without exchanging when code is missing", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    const { GET } = await import("../integrations/google-health/callback/route");
+
+    const response = await GET(callbackRequest("?state=xyz&error=access_denied", "xyz"));
+
+    expect(response.status).toBe(307);
+    expect(exchangeGoogleHealthCode).not.toHaveBeenCalled();
+  });
+
+  it("exchanges the code and stores the token when state matches", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveGoogleClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    exchangeGoogleHealthCode.mockResolvedValue({
+      accessToken: "ya29.new",
+      refreshToken: "1//new-refresh",
+      expiresAt: new Date("2026-08-15T05:00:00.000Z"),
+    });
+    saveGoogleHealthToken.mockResolvedValue(undefined);
+    const { GET } = await import("../integrations/google-health/callback/route");
+
+    const response = await GET(callbackRequest("?code=auth-code-1&state=xyz", "xyz"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/controls");
+    expect(exchangeGoogleHealthCode).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "auth-code-1", clientId: "client-123", clientSecret: "secret-abc" }),
+    );
+    expect(saveGoogleHealthToken).toHaveBeenCalledWith({
+      userId: USER_ROW.id,
+      accessToken: "ya29.new",
+      refreshToken: "1//new-refresh",
+      expiresAt: new Date("2026-08-15T05:00:00.000Z"),
+    });
+  });
+
+  it("still redirects to /controls when the exchange fails", async () => {
+    getOrCreateUser.mockResolvedValue(USER_ROW);
+    resolveGoogleClientCredentials.mockReturnValue({ clientId: "client-123", clientSecret: "secret-abc" });
+    exchangeGoogleHealthCode.mockRejectedValue(new Error("Google token exchange failed: Bad code"));
+    const { GET } = await import("../integrations/google-health/callback/route");
+
+    const response = await GET(callbackRequest("?code=bad&state=xyz", "xyz"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/controls");
+    expect(saveGoogleHealthToken).not.toHaveBeenCalled();
   });
 });
