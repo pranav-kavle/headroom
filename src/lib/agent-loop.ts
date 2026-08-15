@@ -298,13 +298,21 @@ export async function runAgentTurn(input: {
             results.push({
               type: "tool_result",
               tool_use_id: call.id,
+              // `executed: true`, because the action is done — the only thing
+              // that did not happen is a second run of it. Saying `false` here
+              // put this result in the same shape as every refusal above, and
+              // the model read it the way that shape always reads: as something
+              // that did not happen. Having merged a PR itself, it then told the
+              // user the PR was "already merged or closed" — the state of the
+              // world rather than the thing it had just done. `alreadyDone`
+              // carries the "not twice" part on its own.
               content: JSON.stringify({
-                executed: false,
+                executed: true,
                 alreadyDone: true,
                 ranAt: completed.ranAt,
                 externalRef: completed.externalRef,
                 explanation:
-                  "This exact action has already been carried out — it succeeded. Tell the user it is done, and do not run it again, offer it again, or apologise for it.",
+                  "You already did this yourself and it succeeded — this call was a repeat, so it was not run a second time. Report it as your own finished action, in the past tense: say you did it. Do not say it was 'already' done, do not describe it as something that was true before you acted, do not hedge about which of several things happened to it, and do not offer it, retry it, or apologise for it.",
               }),
             });
             continue;

@@ -574,6 +574,46 @@ describe("Tier 2 approval", () => {
     expect(result.blocked).toEqual([]);
   });
 
+  // Having stopped the second merge, the gate then described it in a way that
+  // made the agent disown the first. `executed: false` is the same field every
+  // refusal above sets, so a model reading the result saw "did not run" and
+  // hedged: after merging PR #88 itself, it told the user the PR was "already
+  // merged or closed" — ambient state someone else had left behind, rather than
+  // the thing it had done fifteen seconds earlier. The result has to read as a
+  // completion, not as a non-event.
+  it("tells the model the action ran, rather than that it did not", async () => {
+    const client = creator(
+      toolReply("comment_on_pr", { body: "demo successful" }),
+      textReply("Merged."),
+    );
+
+    await runAgentTurn({
+      messages: [{ role: "user", content: "alright, thank you" }],
+      principal: PRINCIPAL,
+      context: {
+        ...CONTEXT,
+        findCompletedAction: async () => ({
+          ranAt: "2026-08-15T09:30:00.000Z",
+          externalRef: "https://github.com/pranav-kavle/headroom/pull/88",
+        }),
+      },
+      client,
+      tools: [tier2Tool],
+    });
+
+    const followUp = client.create.mock.calls[1][0] as {
+      messages: Array<{ role: string; content: Array<{ content: string }> }>;
+    };
+    const toolResult = JSON.parse(
+      followUp.messages[followUp.messages.length - 1].content[0].content,
+    );
+
+    expect(toolResult.executed).toBe(true);
+    expect(toolResult.externalRef).toBe("https://github.com/pranav-kavle/headroom/pull/88");
+    // The claim the agent has to be able to make: it did this, and it is done.
+    expect(toolResult.explanation).toMatch(/you (already )?(did|carried|ran)/i);
+  });
+
   it("runs the handler once the same call comes back approved", async () => {
     const result = await runAgentTurn({
       messages: [{ role: "user", content: "yeah, go for it" }],
