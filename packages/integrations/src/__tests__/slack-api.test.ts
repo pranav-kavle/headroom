@@ -56,10 +56,23 @@ describe("listSlackConversations", () => {
     const conversations = await listSlackConversations({ token: "xoxp-1", fetchImpl });
 
     expect(conversations).toEqual([
-      { id: "C1", name: "general", isIm: false },
-      { id: "D1", name: null, isIm: true },
+      { id: "C1", name: "general", isIm: false, userId: null },
+      { id: "D1", name: null, isIm: true, userId: null },
     ]);
     expect(bodyOf(fetchImpl.mock.calls[1]).get("cursor")).toBe("page2");
+  });
+
+  it("keeps the other person's user id on a DM, which has no name to show", async () => {
+    // A DM comes back with is_im and a `user`, never a `name`. Dropping the
+    // user id leaves the conversation unlabelable — you would see an opaque
+    // channel id where a person's name belongs.
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(ok({ channels: [{ id: "D1", is_im: true, user: "U04AB" }], response_metadata: {} }));
+
+    const conversations = await listSlackConversations({ token: "xoxp-1", fetchImpl });
+
+    expect(conversations).toEqual([{ id: "D1", name: null, isIm: true, userId: "U04AB" }]);
   });
 
   it("throws when Slack reports ok:false on an HTTP 200", async () => {

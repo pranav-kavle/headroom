@@ -29,6 +29,7 @@ describe("toAnthropicTools", () => {
 
     expect(tools.map((t) => t.name).sort()).toEqual([
       "check_github",
+      "check_slack",
       "close_pr",
       "comment_on_pr",
       "get_action_policy",
@@ -36,7 +37,9 @@ describe("toAnthropicTools", () => {
       "get_flight_status",
       "get_state",
       "get_weather",
+      "list_slack_channels",
       "merge_pr",
+      "send_slack_message",
     ]);
     for (const tool of tools) {
       expect(tool.input_schema.type).toBe("object");
@@ -122,6 +125,7 @@ describe("buildTurnParams", () => {
   it("passes the engine tools through to the model", () => {
     expect(params().tools.map((t) => t.name).sort()).toEqual([
       "check_github",
+      "check_slack",
       "close_pr",
       "comment_on_pr",
       "get_action_policy",
@@ -129,7 +133,9 @@ describe("buildTurnParams", () => {
       "get_flight_status",
       "get_state",
       "get_weather",
+      "list_slack_channels",
       "merge_pr",
+      "send_slack_message",
     ]);
   });
 

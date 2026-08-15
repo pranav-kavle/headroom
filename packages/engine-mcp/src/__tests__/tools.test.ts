@@ -41,6 +41,7 @@ describe("engineTools", () => {
   it("exposes the engine tools built so far, under their design-doc §7/§16 names", () => {
     expect(engineTools().map((t) => t.name).sort()).toEqual([
       "check_github",
+      "check_slack",
       "close_pr",
       "comment_on_pr",
       "get_action_policy",
@@ -48,7 +49,9 @@ describe("engineTools", () => {
       "get_flight_status",
       "get_state",
       "get_weather",
+      "list_slack_channels",
       "merge_pr",
+      "send_slack_message",
     ]);
   });
 
@@ -100,20 +103,23 @@ describe("engineTools", () => {
       .sort();
     expect(external).toEqual([
       "check_github",
+      "check_slack",
       "close_pr",
       "comment_on_pr",
       "get_events",
       "get_flight_status",
       "get_weather",
+      "list_slack_channels",
       "merge_pr",
+      "send_slack_message",
     ]);
 
     expect(toolNamed("get_state").external).toBeFalsy();
     expect(toolNamed("get_action_policy").external).toBeFalsy();
   });
 
-  it("tiers the three GitHub write actions as tier_2, and leaves the reads untiered", () => {
-    for (const name of ["comment_on_pr", "close_pr", "merge_pr"]) {
+  it("tiers every outward-facing write as tier_2, and leaves the reads untiered", () => {
+    for (const name of ["comment_on_pr", "close_pr", "merge_pr", "send_slack_message"]) {
       expect(toolNamed(name).tier, name).toBe("tier_2");
     }
     for (const name of [
@@ -123,6 +129,8 @@ describe("engineTools", () => {
       "get_flight_status",
       "get_action_policy",
       "check_github",
+      "check_slack",
+      "list_slack_channels",
     ]) {
       expect(toolNamed(name).tier, name).toBeUndefined();
     }

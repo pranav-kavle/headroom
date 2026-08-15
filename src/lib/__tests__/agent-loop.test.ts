@@ -82,6 +82,43 @@ describe("runAgentTurn", () => {
     expect(result.citations).toEqual([{ artifactId: "a1", quote: "I owe Maya the deck" }]);
   });
 
+  // Slack has no extraction yet, so its messages never appear in
+  // openCommitments — they come back from check_slack as recentMessages. Read
+  // one shape and not the other and a Slack answer is spoken with no evidence
+  // beside it at all, which is exactly what core rule 2 forbids.
+  it("collects citations from a source whose artifacts are not commitments", async () => {
+    const slackTool: EngineTool = {
+      name: "check_slack",
+      description: "test",
+      inputSchema: { type: "object" },
+      handler: async () => ({
+        channelsScanned: 1,
+        messagesSynced: 1,
+        recentMessages: [
+          {
+            artifactId: "art_1",
+            author: "Priya Raman",
+            occurredAt: "2026-08-15T04:12:00.000Z",
+            quote: "can you get me the deck by Thursday",
+            url: "https://headroom-dev.slack.com/archives/C1/p1",
+          },
+        ],
+      }),
+    };
+
+    const result = await runAgentTurn({
+      messages: [{ role: "user", content: "anything in slack?" }],
+      principal: PRINCIPAL,
+      context: CONTEXT,
+      client: creator(toolReply("check_slack"), textReply("Priya asked for the deck.")),
+      tools: [slackTool],
+    });
+
+    expect(result.citations).toEqual([
+      { artifactId: "art_1", quote: "can you get me the deck by Thursday" },
+    ]);
+  });
+
   it("surfaces a refusal instead of returning empty text", async () => {
     const result = await runAgentTurn({
       messages: [{ role: "user", content: "hello" }],

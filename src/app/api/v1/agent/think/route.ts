@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { closeTrackedPullRequestIfPresent, findArtifactById, listCommitments } from "@headroom/graph";
+import {
+  closeTrackedPullRequestIfPresent,
+  findArtifactById,
+  listCommitments,
+  listRecentArtifactsBySource,
+} from "@headroom/graph";
 import { verifyThinkToken, type ThinkTokenClaims } from "@/lib/agent-think-auth";
 import { resolveAnthropicApiKey } from "@/lib/agent";
 import { runAgentTurn, type MessageCreator } from "@/lib/agent-loop";
 import { getGithubAccessToken } from "@/lib/github-token";
+import { getSlackCredentials } from "@/lib/slack-token";
 import { recordTurn } from "@/lib/agent-turns";
 import { captureUtterance } from "@/lib/capture";
 import {
@@ -80,6 +86,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Slack's tools (check_slack/list_slack_channels/send_slack_message) need
+  // the same. Keyed on the internal user id, not the Clerk one — Headroom
+  // stores this token itself after its own OAuth callback, rather than reading
+  // it back out of Clerk the way the GitHub one above is.
+  let slackCredentials: { accessToken: string; slackUserId: string } | undefined;
+  try {
+    slackCredentials = (await getSlackCredentials(userId)) ?? undefined;
+  } catch (error) {
+    console.warn("[think] Slack token lookup failed", error);
+  }
+
   const result = await runAgentTurn({
     // Spec §5: the whole conversation, not just the latest line.
     messages: toTurnMessages(body),
@@ -103,6 +120,13 @@ export async function POST(request: NextRequest) {
       ticketmasterApiKey: process.env.TICKETMASTER_API_KEY,
       rapidApiKey: process.env.RAPIDAPI_KEY,
       githubToken,
+      slackCredentials,
+      // Slack messages never become commitments (2026-08-15 spec §1), so
+      // `listCommitments` above cannot reach them and check_slack reads the
+      // artifacts directly. Scoped to this user here, in the closure, for the
+      // same reason getArtifactById is.
+      listRecentSlackMessages: (_userId, limit) =>
+        listRecentArtifactsBySource({ userId, source: "slack", limit }),
     },
   });
 

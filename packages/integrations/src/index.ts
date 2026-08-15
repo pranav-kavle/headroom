@@ -8,5 +8,5 @@ export { syncGoogleHealth } from "./google-health/sync";
 export type { GoogleHealthSyncSummary } from "./google-health/sync";
 export { syncSlack } from "./slack/sync";
 export type { SlackSyncSummary } from "./slack/sync";
-export { sendSlackMessage, SLACK_SEND_TIER } from "./slack/actions";
-export type { SentSlackMessage } from "./slack/actions";
+export { listSlackSendTargets, sendSlackMessage, SLACK_SEND_TIER, SLACK_TARGET_LIMIT } from "./slack/actions";
+export type { SentSlackMessage, SlackSendTarget } from "./slack/actions";
