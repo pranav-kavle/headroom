@@ -35,6 +35,20 @@ const FILTER_FIELD: Record<GoogleHealthKind, string> = {
   hrv: "daily_heart_rate_variability",
 };
 
+// Filters are AIP-160, and the filterable time member differs by record type
+// — there is no single expression that works for all three. Sleep is a
+// Session type and filters on its interval's END time (start_time is not a
+// valid member for it); RHR and HRV are Daily types and filter on a
+// date-only `date`. Sending `<type>.interval.start_time` for everything is
+// what the live API rejected with
+// INVALID_DATA_POINT_FILTER_DATA_TYPE_MEMBER (2026-08-15).
+function filterExpression(kind: GoogleHealthKind, sinceDate: string): string {
+  if (kind === "sleep") {
+    return `${FILTER_FIELD.sleep}.interval.end_time >= "${sinceDate}T00:00:00Z"`;
+  }
+  return `${FILTER_FIELD[kind]}.date >= "${sinceDate}"`;
+}
+
 function extractValue(kind: GoogleHealthKind, point: Record<string, unknown>): { value: number; unit: string } {
   if (kind === "sleep") {
     const minutes = point.minutesAsleep;
@@ -76,6 +90,18 @@ export function parseGoogleHealthDataPoints(kind: GoogleHealthKind, json: unknow
     results.push({ forDate: interval.startTime.slice(0, 10), value, unit });
   }
 
+  // Silence here is the dangerous case: every row dropped looks exactly like
+  // "no health data recorded" and syncs 0 points as a success. If Google
+  // sent rows and none survived, the shape isn't what this parser expects —
+  // say so, and carry a whole raw row so the correction is mechanical rather
+  // than another round of guessing at field names.
+  if (dataPoints.length > 0 && results.length === 0) {
+    throw new Error(
+      `Google Health returned ${dataPoints.length} ${kind} data point(s) but none matched the expected ` +
+        `shape (${field}.interval.startTime). First raw point: ${JSON.stringify(dataPoints[0])}`,
+    );
+  }
+
   return results;
 }
 
@@ -90,7 +116,7 @@ export async function fetchGoogleHealthDataPoints(input: {
   const url = new URL(
     `https://health.googleapis.com/v4/users/me/dataTypes/${DATA_TYPE_PATH[input.kind]}/dataPoints`,
   );
-  url.searchParams.set("filter", `${FILTER_FIELD[input.kind]}.interval.start_time >= "${input.sinceDate}T00:00:00Z"`);
+  url.searchParams.set("filter", filterExpression(input.kind, input.sinceDate));
 
   const response = await fetchImpl(url, { headers: { Authorization: `Bearer ${input.token}` } });
   const json = (await response.json()) as { error?: { message?: string } };
