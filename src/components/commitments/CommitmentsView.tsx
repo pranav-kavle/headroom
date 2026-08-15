@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import type { CommitmentRow } from "@headroom/graph";
+import type { CommitmentRow, TrackedPullRequestRow } from "@headroom/graph";
 import { formatShortDate, isWithinDays, sourceLabel } from "@/lib/format";
 import { isNeedsYou, isOnTrack, isWaitingOnOthers } from "@/lib/commitment-groups";
 import { OttoNote } from "@/components/otto/OttoNote";
 import { PendingList } from "@/components/otto/PendingList";
+import { OpenPullRequestList } from "@/components/github/OpenPullRequestList";
 import styles from "./CommitmentsView.module.css";
 
 const WILL_APPEAR = [
@@ -59,7 +60,13 @@ function dotColor(commitment: CommitmentRow): string {
   return "green";
 }
 
-export function CommitmentsView({ commitments }: { commitments: CommitmentRow[] }) {
+export function CommitmentsView({
+  commitments,
+  openPullRequests,
+}: {
+  commitments: CommitmentRow[];
+  openPullRequests: TrackedPullRequestRow[];
+}) {
   const [segment, setSegment] = useState<Segment>("All");
   const [query, setQuery] = useState("");
 
@@ -89,7 +96,12 @@ export function CommitmentsView({ commitments }: { commitments: CommitmentRow[] 
     <main className={styles.screen}>
       <div className={styles.eyebrow}>Commitments</div>
       <div className={styles.display}>
-        {commitments.length === 0 ? "Nothing to track yet." : `${counts.open} open.`}
+        {commitments.length > 0
+          ? `${counts.open} open.`
+          : openPullRequests.length > 0
+            ? // Something *was* read — it just isn't owed in either direction.
+              "Nothing owed either way."
+            : "Nothing to track yet."}
       </div>
       {counts.open > 0 && (
         <div className={styles.sub}>
@@ -99,11 +111,22 @@ export function CommitmentsView({ commitments }: { commitments: CommitmentRow[] 
 
       {commitments.length === 0 ? (
         <>
-          <OttoNote action={{ label: "Connect a source", href: "/controls" }}>
-            This fills up on its own. You never type a promise in here &mdash; I read them from
-            wherever you actually made them, and every one keeps a link back to the original.
-          </OttoNote>
-          <PendingList title="Once I've read something" items={WILL_APPEAR} />
+          <OpenPullRequestList pullRequests={openPullRequests} />
+          {openPullRequests.length === 0 ? (
+            <>
+              <OttoNote action={{ label: "Connect a source", href: "/controls" }}>
+                This fills up on its own. You never type a promise in here &mdash; I read them from
+                wherever you actually made them, and every one keeps a link back to the original.
+              </OttoNote>
+              <PendingList title="Once I've read something" items={WILL_APPEAR} />
+            </>
+          ) : (
+            <OttoNote action={{ label: "Connect a source", href: "/controls" }}>
+              Those are yours alone &mdash; nobody has been asked to review them, so nothing is owed
+              in either direction yet. Commitments appear here once I can see two people and a
+              promise between them.
+            </OttoNote>
+          )}
         </>
       ) : (
         <>
@@ -168,6 +191,11 @@ export function CommitmentsView({ commitments }: { commitments: CommitmentRow[] 
               </div>
             ))
           )}
+
+          {/* Outside the segment/search filtering above on purpose: those
+              segments partition commitments by direction and status, and a PR
+              with neither can't be filtered by them honestly. */}
+          <OpenPullRequestList pullRequests={openPullRequests} />
         </>
       )}
     </main>

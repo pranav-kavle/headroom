@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { getCommitmentById, listCommitments } from "@headroom/graph";
+import { closeTrackedPullRequestIfPresent, findArtifactById, listCommitments } from "@headroom/graph";
 import { verifyThinkToken, type ThinkTokenClaims } from "@/lib/agent-think-auth";
 import { resolveAnthropicApiKey } from "@/lib/agent";
 import { runAgentTurn, type MessageCreator } from "@/lib/agent-loop";
@@ -94,7 +94,9 @@ export async function POST(request: NextRequest) {
       // user's own.
       timezone: principal.timezone ?? undefined,
       listCommitments: (id) => listCommitments(id),
-      getCommitmentById: (id) => getCommitmentById(id, userId),
+      getArtifactById: (id) => findArtifactById(id, userId),
+      markPullRequestClosed: (artifactId, state) =>
+        closeTrackedPullRequestIfPresent({ artifactId, state, at: now }),
       // §16's live lookups (get_weather/get_events/get_flight_status). If
       // unset, the tool itself throws a named "key not configured" error
       // rather than this route failing the whole turn up front.

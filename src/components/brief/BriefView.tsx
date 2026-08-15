@@ -1,11 +1,12 @@
 import Link from "next/link";
-import type { CommitmentRow } from "@headroom/graph";
+import type { CommitmentRow, TrackedPullRequestRow } from "@headroom/graph";
 import { isNeedsYou, isOnTrack, isWaitingOnOthers } from "@/lib/commitment-groups";
 import { STATUS_LABELS, pillTone } from "@/lib/commitment-status";
 import { formatShortDate, sourceLabel } from "@/lib/format";
 import { formatDateLabel, timeOfDayGreeting } from "@/lib/greeting";
 import { OttoNote } from "@/components/otto/OttoNote";
 import { PendingList } from "@/components/otto/PendingList";
+import { OpenPullRequestList } from "@/components/github/OpenPullRequestList";
 import styles from "./BriefView.module.css";
 
 const ON_TRACK_VISIBLE = 3;
@@ -18,17 +19,23 @@ const WILL_APPEAR = [
 
 export function BriefView({
   commitments,
+  openPullRequests,
   name,
   timeZone,
 }: {
   commitments: CommitmentRow[];
+  openPullRequests: TrackedPullRequestRow[];
   name: string;
   timeZone: string | null;
 }) {
   // An empty graph is the *normal* first state, not an error — so it greets
   // you, says plainly that it hasn't read anything, and offers the one action
   // that changes that.
-  if (commitments.length === 0) {
+  //
+  // Both lists have to be empty to count as "read nothing": your own open PRs
+  // are real read facts even though none of them is a commitment, and showing
+  // "I haven't read anything yet" above a PR list would be a plain lie.
+  if (commitments.length === 0 && openPullRequests.length === 0) {
     const now = new Date();
     return (
       <main className={styles.screen}>
@@ -63,7 +70,11 @@ export function BriefView({
           : `${needsYou.length} promise${needsYou.length === 1 ? "" : "s"} need${needsYou.length === 1 ? "s" : ""} you.`}
       </div>
       <div className={styles.sub}>
-        {onTrack.length} on track. {waiting.length} waiting on others.
+        {commitments.length === 0
+          ? // No commitments at all, but we got here — so there are PRs below.
+            // Say what was actually read rather than counting zeroes.
+            `${openPullRequests.length} open PR${openPullRequests.length === 1 ? "" : "s"} of your own, owed to no one yet.`
+          : `${onTrack.length} on track. ${waiting.length} waiting on others.`}
       </div>
 
       {needsYou.length > 0 && (
@@ -88,6 +99,9 @@ export function BriefView({
         </div>
       )}
 
+      {/* Suppressed when there are no commitments at all: an empty "On track 0"
+          box above a list of PRs reads as a rendering fault, not as calm. */}
+      {commitments.length > 0 && (
       <div className={styles.grp}>
         <div className={styles.secHead}>
           <div className={styles.eyebrow}>On track</div>
@@ -112,6 +126,9 @@ export function BriefView({
           )}
         </div>
       </div>
+      )}
+
+      <OpenPullRequestList pullRequests={openPullRequests} />
     </main>
   );
 }

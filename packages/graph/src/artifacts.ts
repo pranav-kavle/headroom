@@ -29,6 +29,12 @@ export function createArtifact(input: {
   return prisma.artifact.create({ data: { id: randomUUID(), ...input } });
 }
 
+// Scoped by userId, not just id: the id alone comes from the model, and an
+// artifact is the handle the GitHub write actions act through.
+export function findArtifactById(id: string, userId: string): Promise<ArtifactRow | null> {
+  return prisma.artifact.findFirst({ where: { id, userId } });
+}
+
 export function findArtifactBySourceExternalId(
   userId: string,
   source: ArtifactSource,
