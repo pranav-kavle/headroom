@@ -1,0 +1,122 @@
+.wrap {
+  margin-top: 26px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+
+.title {
+  font-size: 11px;
+  font-weight: 640;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--hr-ink-3);
+}
+
+.when {
+  font-size: 11.5px;
+  color: var(--hr-ink-3);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.tile {
+  padding: 12px 11px 11px;
+  border: 1px solid var(--hr-line);
+  border-radius: var(--hr-radius-md);
+  background: var(--hr-surface-2);
+  /* The three tiles share a row, so an over-long value must not widen one
+     column and starve the others. */
+  min-width: 0;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--hr-ink-2);
+}
+
+.value {
+  /* Proportional figures on purpose: tabular-nums gives every digit the width
+     of a zero, which makes a value like 52 look loose at display size. */
+  font-size: 19px;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin-top: 5px;
+  color: var(--hr-ink);
+}
+
+.unit {
+  font-size: 12px;
+  font-weight: 560;
+  letter-spacing: 0;
+  color: var(--hr-ink-2);
+  margin-left: 2px;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin: 9px 0 8px;
+}
+
+/* --hr-ink-2, not --hr-ink-3: ink-3 measures 2.47:1 against this tile
+   surface, under the 3:1 a data mark needs to stay legible. */
+.spark polyline {
+  fill: none;
+  stroke: var(--hr-ink-2);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* The viewBox is stretched by preserveAspectRatio="none", which would
+     otherwise scale the stroke unevenly with it. */
+  vector-effect: non-scaling-stroke;
+}
+
+/* A surface ring on the endpoint marker, never a border drawn to separate it. */
+.spark circle {
+  fill: var(--hr-ink);
+  stroke: var(--hr-surface-2);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.delta {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.arrow {
+  flex: 0 0 auto;
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+/* Tone is set per metric upstream — a rising resting heart rate is strain,
+   a rising HRV is recovery — so these never map to the arrow direction. */
+.delta[data-tone="strain"] {
+  color: var(--hr-amber);
+}
+
+.delta[data-tone="ok"] {
+  color: var(--hr-green);
+}
+
+.delta[data-tone="flat"] {
+  color: var(--hr-ink-3);
+}
