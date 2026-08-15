@@ -22,8 +22,14 @@ async function makeUser(suffix: string) {
   return createUser({ clerkUserId, email: `${suffix}@example.com` });
 }
 
-async function makeRun(userId: string, turnId: string) {
-  return startAgentRun({ userId, turnId, at: AT });
+// Every real run carries the words that opened it — findApprovableAction reads
+// them back to tell a fresh confirmation from a duplicate request for the same
+// utterance, so a run without one is not a run this code ever sees in prod.
+const ASKED = "Can you comment on the PR?";
+const CONFIRMED = "Yeah, go ahead.";
+
+async function makeRun(userId: string, turnId: string, transcript = ASKED) {
+  return startAgentRun({ userId, turnId, payload: { transcript }, at: AT });
 }
 
 afterEach(async () => {
@@ -52,6 +58,90 @@ describe("startAgentRun", () => {
 describe("findApprovableAction", () => {
   const PAYLOAD = { artifactId: "a1", body: "demo successful" };
 
+  // The bug this pair exists for. "A different run" was taken to mean the user
+  // had spoken again, and it does not: Deepgram sends /agent/think more than
+  // one request for a single utterance, each opening its own run and making its
+  // own identical tool call. The second matched the first's proposal and ran —
+  // so "close PR 90" closed PR 90 on the asking turn, a second before the offer
+  // was spoken. The user's "yeah" then arrived to find the PR already gone, and
+  // the agent correctly reported it could not find it, which read as a failure.
+  it("ignores a duplicate request carrying the same utterance", async () => {
+    const user = await makeUser("dupe");
+    const first = await makeRun(user.id, "turn-1", ASKED);
+    await createProposedAction({
+      userId: user.id,
+      agentRunId: first.id,
+      tier: "tier_2",
+      kind: "close_pr",
+      payload: PAYLOAD,
+    });
+    // A second request for the *same* spoken words: a different run, a
+    // different turn id, and not a confirmation of anything.
+    const duplicate = await makeRun(user.id, "turn-1-duplicate", ASKED);
+
+    const found = await findApprovableAction({
+      userId: user.id,
+      kind: "close_pr",
+      payload: PAYLOAD,
+      excludeAgentRunId: duplicate.id,
+      utterance: ASKED,
+      proposedAfter: WINDOW_START,
+    });
+
+    expect(found).toBeNull();
+  });
+
+  it("approves once the user has actually said something new", async () => {
+    const user = await makeUser("spokeagain");
+    const asking = await makeRun(user.id, "turn-1", ASKED);
+    await createProposedAction({
+      userId: user.id,
+      agentRunId: asking.id,
+      tier: "tier_2",
+      kind: "close_pr",
+      payload: PAYLOAD,
+    });
+    const confirming = await makeRun(user.id, "turn-2", CONFIRMED);
+
+    const found = await findApprovableAction({
+      userId: user.id,
+      kind: "close_pr",
+      payload: PAYLOAD,
+      excludeAgentRunId: confirming.id,
+      utterance: CONFIRMED,
+      proposedAfter: WINDOW_START,
+    });
+
+    expect(found?.status).toBe("proposed");
+  });
+
+  // Fail closed. Without the words behind a proposal there is no way to tell a
+  // confirmation from a duplicate, and the failure that matters is the one that
+  // executes something nobody agreed to.
+  it("refuses to approve against a proposal whose utterance was never recorded", async () => {
+    const user = await makeUser("notranscript");
+    const first = await startAgentRun({ userId: user.id, turnId: "turn-1", at: AT });
+    await createProposedAction({
+      userId: user.id,
+      agentRunId: first.id,
+      tier: "tier_2",
+      kind: "close_pr",
+      payload: PAYLOAD,
+    });
+    const second = await makeRun(user.id, "turn-2", CONFIRMED);
+
+    const found = await findApprovableAction({
+      userId: user.id,
+      kind: "close_pr",
+      payload: PAYLOAD,
+      excludeAgentRunId: second.id,
+      utterance: CONFIRMED,
+      proposedAfter: WINDOW_START,
+    });
+
+    expect(found).toBeNull();
+  });
+
   it("finds an offer made in an earlier run", async () => {
     const user = await makeUser("approve");
     const first = await makeRun(user.id, "turn-1");
@@ -69,6 +159,7 @@ describe("findApprovableAction", () => {
       kind: "comment_on_pr",
       payload: PAYLOAD,
       excludeAgentRunId: second.id,
+      utterance: CONFIRMED,
       proposedAfter: WINDOW_START,
     });
 
@@ -94,6 +185,7 @@ describe("findApprovableAction", () => {
       kind: "comment_on_pr",
       payload: PAYLOAD,
       excludeAgentRunId: run.id,
+      utterance: CONFIRMED,
       proposedAfter: WINDOW_START,
     });
 
@@ -121,6 +213,7 @@ describe("findApprovableAction", () => {
       payload: PAYLOAD,
       excludeAgentRunId: second.id,
       // The run above started at AT; this window opens after it.
+      utterance: CONFIRMED,
       proposedAfter: new Date(AT.getTime() + 60_000),
     });
 
@@ -147,6 +240,7 @@ describe("findApprovableAction", () => {
       kind: "comment_on_pr",
       payload: { ...PAYLOAD, body: "ship it" },
       excludeAgentRunId: second.id,
+      utterance: CONFIRMED,
       proposedAfter: WINDOW_START,
     });
 
@@ -172,7 +266,8 @@ describe("findApprovableAction", () => {
         payload: PAYLOAD,
         excludeAgentRunId: second.id,
 
-        proposedAfter: WINDOW_START,
+        utterance: CONFIRMED,
+      proposedAfter: WINDOW_START,
       }),
     ).toBeNull();
   });
@@ -197,7 +292,8 @@ describe("findApprovableAction", () => {
         payload: PAYLOAD,
         excludeAgentRunId: other.id,
 
-        proposedAfter: WINDOW_START,
+        utterance: CONFIRMED,
+      proposedAfter: WINDOW_START,
       }),
     ).toBeNull();
   });
@@ -222,7 +318,8 @@ describe("findApprovableAction", () => {
         payload: PAYLOAD,
         excludeAgentRunId: second.id,
 
-        proposedAfter: WINDOW_START,
+        utterance: CONFIRMED,
+      proposedAfter: WINDOW_START,
       }),
     ).toBeNull();
   });
