@@ -221,19 +221,58 @@ describe("get_flight_status handler", () => {
   });
 });
 
+// Keyed on the tool, not on a tier the model supplies. Core rule 3 says the
+// model never chooses its own autonomy tier — that was true of *execution*,
+// where the gate reads tool.tier, but not of *speech*: asked to merge a PR,
+// the model reasoned "merging is code, so Tier 4", got the correct verdict
+// for Tier 4, and told the user merging was forbidden. The answer was right
+// about the wrong question, and merge_pr was never called.
 describe("get_action_policy handler", () => {
-  it("returns the deterministic policy for a tier", async () => {
-    const result = await toolNamed("get_action_policy").handler(
-      { tier: "tier_3", kind: "book_flight" },
-      context(),
-    );
+  it("resolves the tier from the tool itself rather than from the model", async () => {
+    const result = await toolNamed("get_action_policy").handler({ action: "merge_pr" }, context());
 
-    expect(result).toEqual({ policy: "forbidden" });
+    expect(result).toEqual({ action: "merge_pr", tier: "tier_2", policy: "needs_approval" });
   });
 
-  it("rejects a tier outside the known set rather than guessing", async () => {
+  it("reports a genuinely forbidden tool as forbidden", async () => {
+    const forbidden = engineTools().find((t) => t.tier === "tier_3" || t.tier === "tier_4");
+    // No Tier 3/4 tool is registered yet; when one is, it must read as
+    // forbidden here rather than as something offerable.
+    if (!forbidden) return;
+
+    const result = (await toolNamed("get_action_policy").handler(
+      { action: forbidden.name },
+      context(),
+    )) as { policy: string };
+
+    expect(result.policy).toBe("forbidden");
+  });
+
+  it("treats a tool with no declared tier as a read", async () => {
+    const result = await toolNamed("get_action_policy").handler({ action: "get_state" }, context());
+
+    expect(result).toEqual({ action: "get_state", tier: null, policy: "allowed" });
+  });
+
+  it("rejects an unknown tool rather than guessing a verdict for it", async () => {
     await expect(
-      toolNamed("get_action_policy").handler({ tier: "tier_9" }, context()),
-    ).rejects.toThrow(/tier/i);
+      toolNamed("get_action_policy").handler({ action: "push_to_prod" }, context()),
+    ).rejects.toThrow(/unknown/i);
+  });
+
+  // The whole point: there is no argument the model can pass that makes a
+  // Tier 2 action look forbidden.
+  it("gives merge, close and comment the same answer, since they share a tier", async () => {
+    const verdicts = await Promise.all(
+      ["merge_pr", "close_pr", "comment_on_pr"].map((action) =>
+        toolNamed("get_action_policy").handler({ action }, context()),
+      ),
+    );
+
+    expect(verdicts.map((v) => (v as { policy: string }).policy)).toEqual([
+      "needs_approval",
+      "needs_approval",
+      "needs_approval",
+    ]);
   });
 });
