@@ -259,10 +259,10 @@ export function ControlsView({
               </div>
               <div className={styles.t}>
                 <b>{source.label}</b>
-                <em>
-                  {control?.connected && !cursor ? "Connected, not yet synced" : detail}
-                  {error && ` — ${error}`}
-                </em>
+                <em>{control?.connected && !cursor ? "Connected, not yet synced" : detail}</em>
+                {/* Its own line, not appended to the status above: these quote
+                    the upstream API verbatim and can run long. */}
+                {error && <em className={styles.err}>{error}</em>}
               </div>
               {!control ? (
                 <>
